@@ -105,6 +105,29 @@ mod platform_tests {
             config.bundle.windows.minimum_webview2_version.as_deref(),
             Some("111.0.1661.0")
         );
+        let nsis = config.bundle.windows.nsis.as_ref().unwrap();
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        assert!(manifest_dir.join(nsis.template.as_ref().unwrap()).is_file());
+        assert!(
+            manifest_dir
+                .join(nsis.header_image.as_ref().unwrap())
+                .is_file()
+        );
+        assert!(
+            manifest_dir
+                .join(nsis.sidebar_image.as_ref().unwrap())
+                .is_file()
+        );
+        assert!(
+            manifest_dir
+                .join(nsis.installer_icon.as_ref().unwrap())
+                .is_file()
+        );
+        assert!(
+            manifest_dir
+                .join(nsis.uninstaller_icon.as_ref().unwrap())
+                .is_file()
+        );
     }
 
     #[test]

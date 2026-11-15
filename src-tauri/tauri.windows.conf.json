@@ -7,7 +7,15 @@
         "type": "offlineInstaller"
       },
       "nsis": {
-        "installMode": "currentUser"
+        "template": "nsis/installer.nsi",
+        "headerImage": "nsis/header.bmp",
+        "sidebarImage": "nsis/sidebar.bmp",
+        "uninstallerHeaderImage": "nsis/header.bmp",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "languages": ["English"],
+        "compression": "lzma"
       },
       "minimumWebview2Version": "111.0.1661.0"
     }

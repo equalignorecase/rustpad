@@ -27,6 +27,9 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "RustPad",
+    "copyright": "Copyright © 2026 RustPad",
+    "shortDescription": "Offline text and source code editor",
     "targets": ["app"],
     "icon": [
       "icons/32x32.png",
