@@ -569,7 +569,7 @@ fn write_windows_registry(
             }
             if let Ok((supported, _)) = apps_key.create_subkey("SupportedTypes") {
                 for ext in FILE_ASSOCIATIONS {
-                    supported.set_value(&format!(".{ext}"), &"").ok();
+                    supported.set_value(format!(".{ext}"), &"").ok();
                 }
             }
         }
