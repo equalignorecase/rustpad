@@ -1,0 +1,50 @@
+{
+  "name": "rustpad",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "test": "vitest run",
+    "check": "tsc --noEmit",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --offline",
+    "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --offline --all-targets -- -D warnings"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "@tauri-apps/api": "^2.12.4",
+    "@codemirror/state": "^6",
+    "@codemirror/view": "^6",
+    "@codemirror/commands": "^6",
+    "@codemirror/language": "^6",
+    "@codemirror/language-data": "^6",
+    "@codemirror/search": "^6",
+    "@codemirror/autocomplete": "^6",
+    "@codemirror/theme-one-dark": "^6",
+    "@lezer/highlight": "^1",
+    "zustand": "^5.1.0",
+    "@radix-ui/react-dialog": "^1.1.23",
+    "lucide-react": "^1.71.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^6.0.2",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16",
+    "@tauri-apps/cli": "^2",
+    "@tailwindcss/vite": "^4.3.5",
+    "tailwindcss": "^4.3.5",
+    "vitest": "^5.1.0",
+    "jsdom": "^31.0.0",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^25"
+  },
+  "packageManager": "pnpm@10.28.2"
+}
