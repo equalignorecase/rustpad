@@ -58,11 +58,11 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("RustPad could not start");
     app.run(|app, event| match event {
-        tauri::RunEvent::ExitRequested { api, .. } => {
-            if !app.state::<Backend>().allow_exit.load(Ordering::SeqCst) {
-                api.prevent_exit();
-                let _ = app.emit("request-close", ());
-            }
+        tauri::RunEvent::ExitRequested { api, .. }
+            if !app.state::<Backend>().allow_exit.load(Ordering::SeqCst) =>
+        {
+            api.prevent_exit();
+            let _ = app.emit("request-close", ());
         }
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Opened { urls } => {

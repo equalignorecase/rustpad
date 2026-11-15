@@ -440,6 +440,8 @@ mod tests {
         assert!(!path.exists());
         fs::write(&path, "original").unwrap();
         let mut permissions = fs::metadata(&path).unwrap().permissions();
+        #[cfg(windows)]
+        let original_permissions = permissions.clone();
         permissions.set_readonly(true);
         fs::set_permissions(&path, permissions).unwrap();
         assert_eq!(
@@ -450,11 +452,7 @@ mod tests {
             "readonly"
         );
         #[cfg(windows)]
-        {
-            let mut permissions = fs::metadata(&path).unwrap().permissions();
-            permissions.set_readonly(false);
-            fs::set_permissions(&path, permissions).unwrap();
-        }
+        fs::set_permissions(&path, original_permissions).unwrap();
     }
 
     #[cfg(unix)]
