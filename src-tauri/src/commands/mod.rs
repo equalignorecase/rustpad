@@ -23,6 +23,7 @@ pub struct Backend {
     pub config: Mutex<Config>,
     pub config_path: PathBuf,
     pub pending: Mutex<Vec<PathBuf>>,
+    pub last_drop: Mutex<Option<(Vec<PathBuf>, std::time::Instant)>>,
     pub allow_exit: AtomicBool,
     folder: Mutex<Option<Folder>>,
 }
@@ -40,6 +41,30 @@ fn lock<T>(value: &Mutex<T>) -> Result<MutexGuard<'_, T>> {
     })
 }
 
+fn authorize_folder(backend: &Backend, path: &std::path::Path) -> Result<Entry> {
+    let root = std::fs::canonicalize(path)?;
+    if !root.is_dir() {
+        return Err(AppError::new("path", "Choose a local folder."));
+    }
+    let name = root
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let mut entries = HashMap::new();
+    entries.insert("folder-0".into(), root.clone());
+    *lock(&backend.folder)? = Some(Folder {
+        root,
+        entries,
+        next: 1,
+    });
+    Ok(Entry {
+        id: "folder-0".into(),
+        name,
+        directory: true,
+    })
+}
+
 impl Backend {
     pub fn new(path: PathBuf) -> Self {
         Self {
@@ -47,6 +72,7 @@ impl Backend {
             config: Mutex::new(config::load(&path).unwrap_or_default()),
             config_path: path,
             pending: Mutex::default(),
+            last_drop: Mutex::new(None),
             allow_exit: AtomicBool::new(false),
             folder: Mutex::new(None),
         }
@@ -62,8 +88,29 @@ impl Backend {
     }
     pub fn queue(&self, paths: Vec<PathBuf>) {
         if let Ok(mut pending) = self.pending.lock() {
-            pending.extend(paths.into_iter().take(50));
+            for path in paths.into_iter().take(50) {
+                if !pending.contains(&path) {
+                    pending.push(path);
+                }
+            }
         }
+    }
+    pub fn queue_drop(&self, paths: Vec<PathBuf>) -> bool {
+        if paths.is_empty() {
+            return false;
+        }
+        let now = std::time::Instant::now();
+        if let Ok(mut last) = self.last_drop.lock() {
+            if let Some((prev_paths, prev_time)) = &*last
+                && prev_paths == &paths
+                && now.duration_since(*prev_time) < std::time::Duration::from_millis(200)
+            {
+                return false;
+            }
+            *last = Some((paths.clone(), now));
+        }
+        self.queue(paths);
+        true
     }
 }
 
@@ -72,13 +119,23 @@ impl Backend {
 pub struct OpenBatch {
     documents: Vec<Document>,
     errors: Vec<AppError>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    folder: Option<Entry>,
 }
 fn open_paths(backend: &Backend, paths: Vec<PathBuf>) -> Result<OpenBatch> {
     let mut batch = OpenBatch {
         documents: vec![],
         errors: vec![],
+        folder: None,
     };
     for path in paths.into_iter().take(50) {
+        if path.is_dir() {
+            match authorize_folder(backend, &path) {
+                Ok(entry) => batch.folder = Some(entry),
+                Err(error) => batch.errors.push(error),
+            }
+            continue;
+        }
         let result = lock(&backend.files)?.open(&path);
         match result {
             Ok(doc) => {
@@ -127,10 +184,18 @@ pub async fn save_document(
     content: String,
     ending: String,
     bom: bool,
+    encoding: Option<String>,
     expected: String,
     backend: State<'_, Backend>,
 ) -> Result<Document> {
-    let doc = lock(&backend.files)?.save(&id, &content, &ending, bom, &expected)?;
+    let doc = lock(&backend.files)?.save_with_encoding(
+        &id,
+        &content,
+        &ending,
+        bom,
+        encoding.as_deref(),
+        &expected,
+    )?;
     backend.remember(&doc)?;
     Ok(doc)
 }
@@ -140,6 +205,7 @@ pub async fn save_as_document(
     content: String,
     ending: String,
     bom: bool,
+    encoding: Option<String>,
     app: AppHandle,
     backend: State<'_, Backend>,
 ) -> Result<Option<Document>> {
@@ -159,8 +225,15 @@ pub async fn save_as_document(
             .map_err(|_| AppError::new("path", "Choose a local file."))?,
     )?;
     let expected = existing_fingerprint(&path)?;
-    let doc =
-        lock(&backend.files)?.save_as(&id, &path, &content, &ending, bom, expected.as_deref())?;
+    let doc = lock(&backend.files)?.save_as_with_encoding(
+        &id,
+        &path,
+        &content,
+        &ending,
+        bom,
+        encoding.as_deref(),
+        expected.as_deref(),
+    )?;
     backend.remember(&doc)?;
     Ok(Some(doc))
 }
@@ -257,27 +330,10 @@ pub async fn choose_folder(app: AppHandle, backend: State<'_, Backend>) -> Resul
     let Some(path) = app.dialog().file().blocking_pick_folder() else {
         return Ok(None);
     };
-    let root = std::fs::canonicalize(
-        path.into_path()
-            .map_err(|_| AppError::new("path", "Choose a local folder."))?,
-    )?;
-    let name = root
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned();
-    let mut entries = HashMap::new();
-    entries.insert("folder-0".into(), root.clone());
-    *lock(&backend.folder)? = Some(Folder {
-        root,
-        entries,
-        next: 1,
-    });
-    Ok(Some(Entry {
-        id: "folder-0".into(),
-        name,
-        directory: true,
-    }))
+    let local = path
+        .into_path()
+        .map_err(|_| AppError::new("path", "Choose a local folder."))?;
+    Ok(Some(authorize_folder(&backend, &local)?))
 }
 #[tauri::command]
 pub async fn list_folder(id: String, backend: State<'_, Backend>) -> Result<Listing> {

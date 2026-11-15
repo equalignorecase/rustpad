@@ -119,7 +119,31 @@ export function EditorPane({
       EditorView.editable.of(!closing),
       EditorState.readOnly.of(closing),
       listener,
-      placeholder(`Start typing, or open a file with ${shortcutLabel("open")}`),
+      EditorView.domEventHandlers({
+        dragover(event) {
+          if (
+            event.dataTransfer?.types &&
+            Array.from(event.dataTransfer.types).includes("Files")
+          ) {
+            event.preventDefault();
+            return true;
+          }
+          return false;
+        },
+        drop(event) {
+          if (
+            event.dataTransfer?.types &&
+            Array.from(event.dataTransfer.types).includes("Files")
+          ) {
+            event.preventDefault();
+            return true;
+          }
+          return false;
+        },
+      }),
+      placeholder(
+        `Start typing, drop a file here, or open a file with ${shortcutLabel("open")}`,
+      ),
       drawSelection(),
       dropCursor(),
       rectangularSelection(),

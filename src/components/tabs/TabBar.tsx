@@ -20,8 +20,11 @@ export function TabBar() {
             onDragStart={(e) => e.dataTransfer.setData("text/rustpad-tab", id)}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
-              e.preventDefault();
-              reorder(e.dataTransfer.getData("text/rustpad-tab"), id);
+              const sourceTab = e.dataTransfer.getData("text/rustpad-tab");
+              if (sourceTab) {
+                e.preventDefault();
+                reorder(sourceTab, id);
+              }
             }}
           >
             <button

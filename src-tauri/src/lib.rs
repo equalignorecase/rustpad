@@ -7,6 +7,24 @@ use commands::Backend;
 use std::sync::atomic::Ordering;
 use tauri::{Emitter, Manager};
 
+fn handle_drag_drop(app: &tauri::AppHandle, event: &tauri::DragDropEvent) {
+    match event {
+        tauri::DragDropEvent::Enter { .. } | tauri::DragDropEvent::Over { .. } => {
+            let _ = app.emit("drag-enter", ());
+        }
+        tauri::DragDropEvent::Drop { paths, .. } => {
+            let _ = app.emit("drag-leave", ());
+            if app.state::<Backend>().queue_drop(paths.clone()) {
+                let _ = app.emit("files-available", ());
+            }
+        }
+        tauri::DragDropEvent::Leave => {
+            let _ = app.emit("drag-leave", ());
+        }
+        _ => {}
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -23,18 +41,21 @@ pub fn run() {
             }
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event
-                && !window.state::<Backend>().allow_exit.load(Ordering::SeqCst)
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. }
+                if !window.state::<Backend>().allow_exit.load(Ordering::SeqCst) =>
             {
                 api.prevent_close();
-                let _ = window.emit("request-close", ());
+                let _ = window.app_handle().emit("request-close", ());
             }
+            tauri::WindowEvent::DragDrop(drop_event) => {
+                handle_drag_drop(window.app_handle(), drop_event);
+            }
+            _ => {}
         })
         .on_webview_event(|webview, event| {
-            if let tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
-                webview.state::<Backend>().queue(paths.clone());
-                let _ = webview.emit("files-available", ());
+            if let tauri::WebviewEvent::DragDrop(drop_event) = event {
+                handle_drag_drop(webview.app_handle(), drop_event);
             }
         })
         .invoke_handler(tauri::generate_handler![

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { isMac } from "../utils/platform";
-import type { DocumentInfo, DocumentMeta, Settings } from "../types";
+import type { DocumentInfo, DocumentMeta, Entry, Settings } from "../types";
 
 export function settingsForPlatform(mac: boolean): Settings {
   return {
@@ -59,6 +59,7 @@ interface Workspace {
   active: string | null;
   settings: Settings;
   sidebar: boolean;
+  folder: Entry | null;
   recent: string[];
   ready: boolean;
   busy: number;
@@ -76,6 +77,7 @@ export const useWorkspace = create<Workspace>((set) => ({
   active: null,
   settings: defaultSettings,
   sidebar: true,
+  folder: null,
   recent: [],
   ready: false,
   busy: 0,
@@ -89,6 +91,7 @@ export const useWorkspace = create<Workspace>((set) => ({
               ...state.documents,
               [doc.id]: {
                 ...doc,
+                encoding: doc.encoding ?? (doc.bom ? "UTF-8 BOM" : "UTF-8"),
                 dirty: false,
                 language: "Auto",
                 ending: "Preserve",

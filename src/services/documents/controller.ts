@@ -3,7 +3,101 @@ import { native, type Native } from "../tauri";
 import { sessions, type EditorSession } from "../editor/session";
 import { useWorkspace, validateSettings } from "../../stores/workspace";
 import { report, useFeedback } from "../../stores/feedback";
-import type { DocumentInfo, Ending, OpenBatch } from "../../types";
+import type { DocumentInfo, Encoding, Ending, OpenBatch } from "../../types";
+
+function detectLineEnding(text: string): DocumentInfo["lineEnding"] {
+  const crlf = (text.match(/\r\n/g) ?? []).length;
+  const lf = (text.match(/\n/g) ?? []).length - crlf;
+  const cr = (text.match(/\r/g) ?? []).length - crlf;
+  if (crlf > 0 && lf === 0 && cr === 0) return "CRLF";
+  if (cr > 0 && crlf === 0 && lf === 0) return "CR";
+  if (crlf === 0 && cr === 0) return "LF";
+  return "Mixed";
+}
+
+function decodeDroppedBytes(bytes: Uint8Array): {
+  content: string;
+  bom: boolean;
+  encoding: Encoding;
+} {
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xef &&
+    bytes[1] === 0xbb &&
+    bytes[2] === 0xbf
+  ) {
+    const content = new TextDecoder("utf-8", { fatal: true }).decode(
+      bytes.subarray(3),
+    );
+    return { content, bom: true, encoding: "UTF-8 BOM" };
+  }
+  try {
+    const content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    if (content.includes("\0")) throw new Error("binary");
+    return { content, bom: false, encoding: "UTF-8" };
+  } catch (err) {
+    if (err instanceof Error && err.message === "binary") {
+      throw {
+        code: "binary",
+        message:
+          "This looks like binary content. RustPad opens text files only; the file was not changed.",
+      };
+    }
+  }
+  if (
+    bytes.length >= 4 &&
+    bytes.length % 2 === 0 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xfe
+  ) {
+    const content = new TextDecoder("utf-16le", { fatal: true }).decode(
+      bytes.subarray(2),
+    );
+    if (content.includes("\0"))
+      throw {
+        code: "binary",
+        message:
+          "This looks like binary content. RustPad opens text files only; the file was not changed.",
+      };
+    return { content, bom: true, encoding: "UTF-16 LE" };
+  }
+  if (
+    bytes.length >= 4 &&
+    bytes.length % 2 === 0 &&
+    bytes[0] === 0xfe &&
+    bytes[1] === 0xff
+  ) {
+    const content = new TextDecoder("utf-16be", { fatal: true }).decode(
+      bytes.subarray(2),
+    );
+    if (content.includes("\0"))
+      throw {
+        code: "binary",
+        message:
+          "This looks like binary content. RustPad opens text files only; the file was not changed.",
+      };
+    return { content, bom: true, encoding: "UTF-16 BE" };
+  }
+  if (bytes.includes(0)) {
+    throw {
+      code: "binary",
+      message:
+        "This looks like binary content. RustPad opens text files only; the file was not changed.",
+    };
+  }
+  try {
+    const content = new TextDecoder("windows-874", { fatal: true }).decode(
+      bytes,
+    );
+    return { content, bom: false, encoding: "Windows-874" };
+  } catch {
+    throw {
+      code: "encoding",
+      message:
+        "This file is not a supported text encoding (UTF-8, UTF-16, or Windows-874). No bytes were changed.",
+    };
+  }
+}
 
 export class DocumentController {
   private saving = new Map<string, Promise<boolean>>();
@@ -56,9 +150,85 @@ export class DocumentController {
     this.editor.add(doc);
     useWorkspace.getState().add(doc);
   }
+  private replaceEmptyUntitledIfSoleTab(incoming: DocumentInfo[]) {
+    const state = useWorkspace.getState();
+    if (state.order.length !== 1) return;
+    const soleId = state.order[0];
+    const meta = state.documents[soleId];
+    if (!meta || meta.path || meta.dirty || this.saving.has(soleId)) return;
+    if (!incoming.some((doc) => doc.id !== soleId)) return;
+    try {
+      const session = this.editor.get(soleId);
+      if (this.editor.isDirty(soleId) || session.state.doc.length > 0) return;
+    } catch {
+      return;
+    }
+    clearTimeout(this.autoSaveTimers.get(soleId));
+    this.autoSaveTimers.delete(soleId);
+    this.editor.remove(soleId);
+    useWorkspace.getState().remove(soleId);
+    void this.api.close?.(soleId)?.catch(() => {});
+  }
   batch(batch: OpenBatch) {
+    if (batch.folder) {
+      useWorkspace.setState({ folder: batch.folder, sidebar: true });
+    }
+    if (batch.documents.length > 0) {
+      this.replaceEmptyUntitledIfSoleTab(batch.documents);
+    }
     batch.documents.forEach((doc) => this.add(doc));
     batch.errors.forEach(report);
+  }
+  async dropFiles(files: FileList | File[]) {
+    const list = Array.from(files).slice(0, 50);
+    if (!list.length) return;
+    const opened: DocumentInfo[] = [];
+    const errors: { code: string; message: string }[] = [];
+    for (const file of list) {
+      if (file.size > 10 * 1024 * 1024) {
+        errors.push({
+          code: "too_large",
+          message:
+            "Files larger than 10 MiB are not supported. The file was not changed.",
+        });
+        continue;
+      }
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { content, bom, encoding } = decodeDroppedBytes(bytes);
+        const path =
+          "path" in file && typeof file.path === "string" && file.path
+            ? file.path
+            : null;
+        const existingId = useWorkspace
+          .getState()
+          .order.find((id) => {
+            const d = useWorkspace.getState().documents[id];
+            return path ? d?.path === path : d?.name === file.name && !d?.path;
+          });
+        if (existingId) {
+          useWorkspace.getState().activate(existingId);
+          continue;
+        }
+        opened.push({
+          id: `dropped-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: file.name,
+          path,
+          content,
+          fingerprint: "",
+          lineEnding: detectLineEnding(content),
+          bom,
+          encoding,
+        });
+      } catch (err) {
+        errors.push(
+          err && typeof err === "object" && "message" in err
+            ? (err as { code: string; message: string })
+            : { code: "io", message: `Could not read ${file.name}.` },
+        );
+      }
+    }
+    this.batch({ documents: opened, errors });
   }
   async initialize() {
     if (this.initialized) return;
@@ -167,6 +337,10 @@ export class DocumentController {
         if (answer === "cancel") return false;
         snapshot.ending = answer as Ending;
       }
+      const customEncoding =
+        snapshot.encoding !== "UTF-8" && snapshot.encoding !== "UTF-8 BOM"
+          ? [snapshot.encoding]
+          : [];
       const doc =
         saveAs || !session.info.path
           ? await this.api.saveAs(
@@ -174,6 +348,7 @@ export class DocumentController {
               snapshot.content,
               snapshot.ending,
               snapshot.bom,
+              ...customEncoding,
             )
           : await this.api.save(
               id,
@@ -181,6 +356,7 @@ export class DocumentController {
               snapshot.ending,
               snapshot.bom,
               session.info.fingerprint,
+              ...customEncoding,
             );
       if (!doc) return false;
       this.editor.saved(id, doc, snapshot);
@@ -190,6 +366,7 @@ export class DocumentController {
         fingerprint: doc.fingerprint,
         lineEnding: doc.lineEnding,
         bom: session.bom,
+        encoding: session.encoding,
         ending: session.ending,
         dirty: this.editor.isDirty(id),
         external: false,
@@ -291,14 +468,25 @@ export class DocumentController {
       : [];
     await this.api.persist(state.settings, tabs, state.active);
   }
-  format(id: string, ending?: Ending, bom?: boolean) {
+  format(id: string, ending?: Ending, bom?: boolean, encoding?: Encoding) {
     const session = this.editor.get(id);
     if (ending) session.ending = ending;
-    if (bom !== undefined) session.bom = bom;
+    if (encoding) {
+      session.encoding = encoding;
+      session.bom =
+        encoding === "UTF-8 BOM" ||
+        encoding === "UTF-16 LE" ||
+        encoding === "UTF-16 BE";
+    } else if (bom !== undefined) {
+      session.bom = bom;
+      session.encoding = bom ? "UTF-8 BOM" : "UTF-8";
+    }
     this.editor.onChange(id);
-    useWorkspace
-      .getState()
-      .patch(id, { ending: session.ending, bom: session.bom });
+    useWorkspace.getState().patch(id, {
+      ending: session.ending,
+      bom: session.bom,
+      encoding: session.encoding,
+    });
   }
   async reload(id: string) {
     const info = await this.api.read(id);
@@ -314,6 +502,7 @@ export class DocumentController {
     const { content: _content, ...metadata } = info;
     useWorkspace.getState().patch(id, {
       ...metadata,
+      encoding: info.encoding ?? (info.bom ? "UTF-8 BOM" : "UTF-8"),
       dirty: false,
       ending: "Preserve",
       external: false,

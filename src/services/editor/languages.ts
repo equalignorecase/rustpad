@@ -14,6 +14,14 @@ export const languageModes = [
   "PHP",
   "SQL",
   "TOML",
+  "YAML",
+  "XML",
+  "C",
+  "C++",
+  "C#",
+  "Go",
+  "Java",
+  "Shell",
 ];
 export function languageFor(name: string, mode: string) {
   if (mode === "Plain text") return null;

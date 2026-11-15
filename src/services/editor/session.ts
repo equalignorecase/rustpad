@@ -5,21 +5,24 @@ import {
   type Text,
 } from "@codemirror/state";
 import { history } from "@codemirror/commands";
-import type { DocumentInfo, Ending } from "../../types";
+import type { DocumentInfo, Encoding, Ending } from "../../types";
 
 export interface Snapshot {
   text: Text;
   content: string;
   ending: Ending;
   bom: boolean;
+  encoding: Encoding;
 }
 interface Session {
   info: DocumentInfo;
   state: EditorState;
   saved: Text;
   savedBom: boolean;
+  savedEncoding: Encoding;
   ending: Ending;
   bom: boolean;
+  encoding: Encoding;
   scroll: number;
   configuration: Compartment;
 }
@@ -34,13 +37,16 @@ export class EditorSession {
       doc: info.content.replace(/\r\n?/g, "\n"),
       extensions: [history(), configuration.of(extensions)],
     });
+    const encoding = info.encoding ?? (info.bom ? "UTF-8 BOM" : "UTF-8");
     this.sessions.set(info.id, {
       info,
       state,
       saved: state.doc,
       savedBom: info.bom,
+      savedEncoding: encoding,
       ending: "Preserve",
       bom: info.bom,
+      encoding,
       scroll: 0,
       configuration,
     });
@@ -62,6 +68,7 @@ export class EditorSession {
     return (
       !session.state.doc.eq(session.saved) ||
       session.bom !== session.savedBom ||
+      session.encoding !== session.savedEncoding ||
       session.ending !== "Preserve"
     );
   }
@@ -72,6 +79,7 @@ export class EditorSession {
       content: session.state.doc.toString(),
       ending: session.ending,
       bom: session.bom,
+      encoding: session.encoding,
     };
   }
   saved(id: string, info: DocumentInfo, snapshot: Snapshot) {
@@ -79,6 +87,8 @@ export class EditorSession {
     session.info = info;
     session.saved = snapshot.text;
     session.savedBom = snapshot.bom;
+    session.savedEncoding = info.encoding ?? snapshot.encoding;
+    session.encoding = session.savedEncoding;
     if (session.ending === snapshot.ending) session.ending = "Preserve";
     this.onChange(id);
   }

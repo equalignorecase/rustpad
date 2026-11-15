@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
+import { FileUp } from "lucide-react";
 import { Titlebar } from "./components/layout/Titlebar";
 import { TabBar } from "./components/tabs/TabBar";
 import { Sidebar } from "./components/sidebar/Sidebar";
@@ -14,24 +15,24 @@ import { report, useFeedback } from "./stores/feedback";
 import { documents } from "./services/documents/controller";
 import { native, onNativeEvent } from "./services/tauri";
 import { shortcut } from "./services/documents/shortcuts";
-import type { Command, Entry } from "./types";
+import type { Command } from "./types";
 import "./themes/app.css";
 
 export default function App() {
   const sidebar = useWorkspace((state) => state.sidebar);
+  const folder = useWorkspace((state) => state.folder);
   const theme = useWorkspace((state) => state.settings.theme);
   const closing = useWorkspace((state) => state.closing);
   const [settings, setSettings] = useState(false);
   const [palette, setPalette] = useState(false);
   const [find, setFind] = useState<"find" | "replace" | null>(null);
-  const [folder, setFolder] = useState<Entry | null>(null);
+  const [dragging, setDragging] = useState(false);
   const openFolder = useCallback(() => {
     native
       .chooseFolder()
       .then((value) => {
         if (value) {
-          setFolder(value);
-          useWorkspace.setState({ sidebar: true });
+          useWorkspace.setState({ folder: value, sidebar: true });
         }
       })
       .catch(report);
@@ -112,10 +113,12 @@ export default function App() {
     let disposed = false;
     const registrations = Promise.all([
       onNativeEvent("request-close", () => void documents.quit()),
-      onNativeEvent(
-        "files-available",
-        () => void documents.pending().catch(report),
-      ),
+      onNativeEvent("drag-enter", () => setDragging(true)),
+      onNativeEvent("drag-leave", () => setDragging(false)),
+      onNativeEvent("files-available", () => {
+        setDragging(false);
+        void documents.pending().catch(report);
+      }),
     ]);
     void registrations
       .then((listeners) => {
@@ -149,6 +152,44 @@ export default function App() {
         event.returnValue = "";
       }
     };
+    const hasFilePayload = (event: DragEvent) =>
+      Boolean(
+        event.dataTransfer?.types &&
+          Array.from(event.dataTransfer.types).includes("Files"),
+      );
+    let dragDepth = 0;
+    const onDragEnter = (event: DragEvent) => {
+      if (!hasFilePayload(event)) return;
+      event.preventDefault();
+      dragDepth += 1;
+      setDragging(true);
+    };
+    const onDragOver = (event: DragEvent) => {
+      if (!hasFilePayload(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      setDragging(true);
+    };
+    const onDragLeave = (event: DragEvent) => {
+      if (!hasFilePayload(event)) return;
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0 || event.relatedTarget === null) {
+        setDragging(false);
+      }
+    };
+    const onDrop = (event: DragEvent) => {
+      if (!hasFilePayload(event)) return;
+      event.preventDefault();
+      dragDepth = 0;
+      setDragging(false);
+      if (!isTauri() && event.dataTransfer?.files?.length) {
+        void documents.dropFiles(event.dataTransfer.files).catch(report);
+      }
+    };
+    window.addEventListener("dragenter", onDragEnter, true);
+    window.addEventListener("dragover", onDragOver, true);
+    window.addEventListener("dragleave", onDragLeave, true);
+    window.addEventListener("drop", onDrop, true);
     window.addEventListener("beforeunload", beforeUnload);
     return () => {
       disposed = true;
@@ -158,6 +199,10 @@ export default function App() {
       clearInterval(interval);
       clearTimeout(persistTimer);
       unsubscribe();
+      window.removeEventListener("dragenter", onDragEnter, true);
+      window.removeEventListener("dragover", onDragOver, true);
+      window.removeEventListener("dragleave", onDragLeave, true);
+      window.removeEventListener("drop", onDrop, true);
       window.removeEventListener("beforeunload", beforeUnload);
     };
   }, []);
@@ -210,6 +255,22 @@ export default function App() {
         <CommandPalette onClose={() => setPalette(false)} run={run} />
       )}
       {closing && <div className="closing-blocker" aria-hidden="true" />}
+      {dragging && (
+        <div
+          className="drop-overlay"
+          role="region"
+          aria-label="Drop files to open"
+        >
+          <div className="drop-card">
+            <FileUp size={36} strokeWidth={1.4} />
+            <strong>Drop files or folders to open</strong>
+            <span>
+              Text &amp; source code files open in tabs · Folders open in
+              Explorer
+            </span>
+          </div>
+        </div>
+      )}
       <UnsavedChangesDialog />
       <ToastSystem />
     </div>

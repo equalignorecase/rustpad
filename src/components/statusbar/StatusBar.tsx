@@ -3,7 +3,7 @@ import { Check, Circle, WrapText } from "lucide-react";
 import { useCursor, useWorkspace } from "../../stores/workspace";
 import { documents } from "../../services/documents/controller";
 import { languageLabel, languageModes } from "../../services/editor/languages";
-import type { Ending } from "../../types";
+import type { Encoding, Ending } from "../../types";
 import { runEditorCommand } from "../editor/EditorPane";
 export function StatusBar() {
   const cursor = useCursor();
@@ -70,13 +70,21 @@ export function StatusBar() {
           </select>
           <select
             aria-label="Encoding"
-            value={doc.bom ? "bom" : "utf8"}
+            value={doc.encoding ?? (doc.bom ? "UTF-8 BOM" : "UTF-8")}
             onChange={(e) =>
-              documents.format(active, undefined, e.target.value === "bom")
+              documents.format(
+                active,
+                undefined,
+                undefined,
+                e.target.value as Encoding,
+              )
             }
           >
-            <option value="utf8">UTF-8</option>
-            <option value="bom">UTF-8 BOM</option>
+            <option value="UTF-8">UTF-8</option>
+            <option value="UTF-8 BOM">UTF-8 BOM</option>
+            <option value="UTF-16 LE">UTF-16 LE</option>
+            <option value="UTF-16 BE">UTF-16 BE</option>
+            <option value="Windows-874">Windows-874</option>
           </select>
           <select
             aria-label="Language mode"

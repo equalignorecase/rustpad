@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import type {
   Config,
   DocumentInfo,
+  Encoding,
   Entry,
   OpenBatch,
   Settings,
@@ -29,10 +30,30 @@ export const native = {
     ending: string,
     bom: boolean,
     expected: string,
+    encoding?: Encoding,
   ) =>
-    call<DocumentInfo>("save_document", { id, content, ending, bom, expected }),
-  saveAs: (id: string, content: string, ending: string, bom: boolean) =>
-    call<DocumentInfo | null>("save_as_document", { id, content, ending, bom }),
+    call<DocumentInfo>("save_document", {
+      id,
+      content,
+      ending,
+      bom,
+      encoding,
+      expected,
+    }),
+  saveAs: (
+    id: string,
+    content: string,
+    ending: string,
+    bom: boolean,
+    encoding?: Encoding,
+  ) =>
+    call<DocumentInfo | null>("save_as_document", {
+      id,
+      content,
+      ending,
+      bom,
+      encoding,
+    }),
   close: (id: string) => call<void>("close_document", { id }),
   config: () => call<Config>("load_config"),
   persist: (

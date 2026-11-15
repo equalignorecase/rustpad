@@ -210,3 +210,70 @@ it("keeps the line ending chosen for an untitled document when defaults change",
     false,
   );
 });
+
+it("replaces untouched empty Untitled tab when dropping or opening files like Notepad++", async () => {
+  const close = vi.fn(async () => {});
+  const editor = new EditorSession();
+  const api = {
+    close,
+    config: async () => ({
+      version: 1,
+      settings: {},
+      tabs: [],
+      recent: ["/code.rs"],
+      active: null,
+    }),
+    pending: async () => ({
+      documents: [
+        {
+          id: "doc-dropped",
+          name: "code.rs",
+          path: "/code.rs",
+          content: "fn main() {}",
+          fingerprint: "fp1",
+          lineEnding: "LF" as const,
+          bom: false,
+          encoding: "UTF-8" as const,
+        },
+      ],
+      errors: [],
+      folder: { id: "folder-0", name: "project", directory: true },
+    }),
+  } as unknown as Native;
+  const controller = new DocumentController(api, editor);
+  controller.add({ ...info, id: "untitled-1", name: "Untitled 1", path: null });
+  expect(useWorkspace.getState().order).toEqual(["untitled-1"]);
+
+  await controller.pending();
+
+  expect(useWorkspace.getState().order).toEqual(["doc-dropped"]);
+  expect(useWorkspace.getState().active).toBe("doc-dropped");
+  expect(useWorkspace.getState().folder?.name).toBe("project");
+  expect(close).toHaveBeenCalledWith("untitled-1");
+});
+
+it("keeps modified Untitled tab when dropping or opening files", async () => {
+  const { controller } = setup({
+    pending: async () => ({
+      documents: [
+        {
+          id: "doc-dropped",
+          name: "notes.txt",
+          path: "/notes.txt",
+          content: "hello",
+          fingerprint: "fp2",
+          lineEnding: "CRLF" as const,
+          bom: false,
+          encoding: "Windows-874" as const,
+        },
+      ],
+      errors: [],
+    }),
+  });
+  await controller.pending();
+  expect(useWorkspace.getState().order).toEqual(["one", "doc-dropped"]);
+  expect(useWorkspace.getState().active).toBe("doc-dropped");
+  expect(useWorkspace.getState().documents["doc-dropped"].encoding).toBe(
+    "Windows-874",
+  );
+});

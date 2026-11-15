@@ -10,6 +10,7 @@ pub struct Document {
     pub fingerprint: String,
     pub line_ending: String,
     pub bom: bool,
+    pub encoding: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

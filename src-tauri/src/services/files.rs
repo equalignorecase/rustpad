@@ -56,20 +56,182 @@ fn read_bytes(path: &Path) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn decode(bytes: &[u8]) -> Result<(String, bool)> {
-    let bom = bytes.starts_with(&[0xef, 0xbb, 0xbf]);
-    let body = if bom { &bytes[3..] } else { bytes };
-    let content = std::str::from_utf8(body).map_err(|_| AppError::new("encoding", "This file is not valid UTF-8. Convert a copy to UTF-8 in another tool, then open the copy. No bytes were changed."))?;
-    if content
-        .chars()
-        .any(|c| c == '\0' || (c.is_control() && !matches!(c, '\n' | '\r' | '\t' | '\u{c}')))
+fn is_binary_text(content: &str) -> bool {
+    content.chars().any(|c| {
+        c == '\0'
+            || (c.is_control() && !matches!(c, '\n' | '\r' | '\t' | '\u{8}' | '\u{c}' | '\u{1b}'))
+    })
+}
+
+fn decode_windows_874(bytes: &[u8]) -> Option<String> {
+    let mut out = String::with_capacity(bytes.len());
+    for &b in bytes {
+        let ch = match b {
+            0x00..=0x7F => b as char,
+            0x80 => '\u{20AC}',
+            0x85 => '\u{2026}',
+            0x91 => '\u{2018}',
+            0x92 => '\u{2019}',
+            0x93 => '\u{201C}',
+            0x94 => '\u{201D}',
+            0x95 => '\u{2022}',
+            0x96 => '\u{2013}',
+            0x97 => '\u{2014}',
+            0xA0 => '\u{00A0}',
+            0xA1..=0xDA | 0xDF..=0xFB => char::from_u32(u32::from(b) - 0xA0 + 0x0E00)?,
+            _ => return None,
+        };
+        out.push(ch);
+    }
+    Some(out)
+}
+
+fn encode_windows_874(text: &str) -> Result<Vec<u8>> {
+    let mut out = Vec::with_capacity(text.len());
+    for ch in text.chars() {
+        let b = match ch {
+            '\u{0000}'..='\u{007F}' => ch as u8,
+            '\u{20AC}' => 0x80,
+            '\u{2026}' => 0x85,
+            '\u{2018}' => 0x91,
+            '\u{2019}' => 0x92,
+            '\u{201C}' => 0x93,
+            '\u{201D}' => 0x94,
+            '\u{2022}' => 0x95,
+            '\u{2013}' => 0x96,
+            '\u{2014}' => 0x97,
+            '\u{00A0}' => 0xA0,
+            '\u{0E01}'..='\u{0E3A}' | '\u{0E3F}'..='\u{0E5B}' => {
+                (u32::from(ch) - 0x0E00 + 0xA0) as u8
+            }
+            _ => {
+                return Err(AppError::new(
+                    "encoding",
+                    "This document contains characters outside Windows-874. Switch encoding to UTF-8 in the status bar before saving.",
+                ));
+            }
+        };
+        out.push(b);
+    }
+    Ok(out)
+}
+
+fn decode(bytes: &[u8]) -> Result<(String, bool, String)> {
+    if bytes.starts_with(&[0xef, 0xbb, 0xbf])
+        && let Ok(content) = std::str::from_utf8(&bytes[3..])
     {
+        if is_binary_text(content) {
+            return Err(AppError::new(
+                "binary",
+                "This looks like binary content. RustPad opens text files only; the file was not changed.",
+            ));
+        }
+        return Ok((content.to_owned(), true, "UTF-8 BOM".into()));
+    }
+    if let Ok(content) = std::str::from_utf8(bytes) {
+        if is_binary_text(content) {
+            return Err(AppError::new(
+                "binary",
+                "This looks like binary content. RustPad opens text files only; the file was not changed.",
+            ));
+        }
+        return Ok((content.to_owned(), false, "UTF-8".into()));
+    }
+    if bytes.starts_with(&[0xff, 0xfe]) && bytes.len() >= 4 && bytes.len().is_multiple_of(2) {
+        let units: Vec<u16> = bytes[2..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&c| u16::from_le_bytes(c))
+            .collect();
+        if let Ok(content) = String::from_utf16(&units) {
+            if is_binary_text(&content) {
+                return Err(AppError::new(
+                    "binary",
+                    "This looks like binary content. RustPad opens text files only; the file was not changed.",
+                ));
+            }
+            return Ok((content, true, "UTF-16 LE".into()));
+        }
+    }
+    if bytes.starts_with(&[0xfe, 0xff]) && bytes.len() >= 4 && bytes.len().is_multiple_of(2) {
+        let units: Vec<u16> = bytes[2..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&c| u16::from_be_bytes(c))
+            .collect();
+        if let Ok(content) = String::from_utf16(&units) {
+            if is_binary_text(&content) {
+                return Err(AppError::new(
+                    "binary",
+                    "This looks like binary content. RustPad opens text files only; the file was not changed.",
+                ));
+            }
+            return Ok((content, true, "UTF-16 BE".into()));
+        }
+    }
+    if bytes.contains(&0) {
         return Err(AppError::new(
             "binary",
-            "This looks like binary content. RustPad opens UTF-8 text only; the file was not changed.",
+            "This looks like binary content. RustPad opens text files only; the file was not changed.",
         ));
     }
-    Ok((content.to_owned(), bom))
+    if let Some(content) = decode_windows_874(bytes) {
+        if is_binary_text(&content) {
+            return Err(AppError::new(
+                "binary",
+                "This looks like binary content. RustPad opens text files only; the file was not changed.",
+            ));
+        }
+        return Ok((content, false, "Windows-874".into()));
+    }
+    Err(AppError::new(
+        "encoding",
+        "This file is not a supported text encoding (UTF-8, UTF-16, or Windows-874). No bytes were changed.",
+    ))
+}
+
+fn encode_bytes(content: &str, bom: bool, encoding: &str) -> Result<(Vec<u8>, bool, String)> {
+    match encoding {
+        "UTF-16 LE" => {
+            let mut bytes = Vec::with_capacity(2 + content.len() * 2);
+            bytes.extend_from_slice(&[0xff, 0xfe]);
+            for unit in content.encode_utf16() {
+                bytes.extend_from_slice(&unit.to_le_bytes());
+            }
+            Ok((bytes, true, "UTF-16 LE".into()))
+        }
+        "UTF-16 BE" => {
+            let mut bytes = Vec::with_capacity(2 + content.len() * 2);
+            bytes.extend_from_slice(&[0xfe, 0xff]);
+            for unit in content.encode_utf16() {
+                bytes.extend_from_slice(&unit.to_be_bytes());
+            }
+            Ok((bytes, true, "UTF-16 BE".into()))
+        }
+        "Windows-874" => Ok((encode_windows_874(content)?, false, "Windows-874".into())),
+        "UTF-8 BOM" => Ok((
+            format!("\u{feff}{content}").into_bytes(),
+            true,
+            "UTF-8 BOM".into(),
+        )),
+        "UTF-8" => {
+            if bom {
+                Ok((
+                    format!("\u{feff}{content}").into_bytes(),
+                    true,
+                    "UTF-8 BOM".into(),
+                ))
+            } else {
+                Ok((content.as_bytes().to_vec(), false, "UTF-8".into()))
+            }
+        }
+        _ => Err(AppError::new(
+            "validation",
+            "Choose UTF-8, UTF-8 BOM, UTF-16 LE, UTF-16 BE, or Windows-874 encoding.",
+        )),
+    }
 }
 
 pub fn normalized(text: &str) -> String {
@@ -205,6 +367,7 @@ impl Files {
             fingerprint: String::new(),
             line_ending: "LF".into(),
             bom: false,
+            encoding: "UTF-8".into(),
         };
         self.records.insert(doc.id.clone(), doc.clone());
         doc
@@ -213,7 +376,7 @@ impl Files {
     pub fn open(&mut self, path: &Path) -> Result<Document> {
         let path = fs::canonicalize(path)?;
         let bytes = read_bytes(&path)?;
-        let (content, bom) = decode(&bytes)?;
+        let (content, bom, encoding) = decode(&bytes)?;
         if let Some(doc) = self
             .records
             .values()
@@ -231,6 +394,7 @@ impl Files {
         doc.line_ending = line_ending(&content);
         doc.content = content;
         doc.bom = bom;
+        doc.encoding = encoding;
         doc.fingerprint = fingerprint(&bytes);
         self.records.insert(doc.id.clone(), doc.clone());
         Ok(doc)
@@ -249,10 +413,11 @@ impl Files {
         let mut doc = self.get(id)?.clone();
         if let Some(path) = &doc.path {
             let bytes = read_bytes(Path::new(path))?;
-            let (content, bom) = decode(&bytes)?;
+            let (content, bom, encoding) = decode(&bytes)?;
             doc.line_ending = line_ending(&content);
             doc.content = content;
             doc.bom = bom;
+            doc.encoding = encoding;
             doc.fingerprint = fingerprint(&bytes);
             self.records.insert(id.to_owned(), doc.clone());
         }
@@ -267,12 +432,25 @@ impl Files {
         }
     }
 
+    #[cfg(test)]
     pub fn save(
         &mut self,
         id: &str,
         content: &str,
         ending: &str,
         bom: bool,
+        expected: &str,
+    ) -> Result<Document> {
+        self.save_with_encoding(id, content, ending, bom, None, expected)
+    }
+
+    pub fn save_with_encoding(
+        &mut self,
+        id: &str,
+        content: &str,
+        ending: &str,
+        bom: bool,
+        encoding: Option<&str>,
         expected: &str,
     ) -> Result<Document> {
         let doc = self.get(id)?.clone();
@@ -287,9 +465,18 @@ impl Files {
             .as_ref()
             .ok_or_else(|| AppError::new("save_as", "Choose a destination with Save As."))?;
         check_target(Path::new(path), Some(expected))?;
-        self.save_as(id, Path::new(path), content, ending, bom, Some(expected))
+        self.save_as_with_encoding(
+            id,
+            Path::new(path),
+            content,
+            ending,
+            bom,
+            encoding,
+            Some(expected),
+        )
     }
 
+    #[cfg(test)]
     pub fn save_as(
         &mut self,
         id: &str,
@@ -297,6 +484,20 @@ impl Files {
         content: &str,
         ending: &str,
         bom: bool,
+        expected: Option<&str>,
+    ) -> Result<Document> {
+        self.save_as_with_encoding(id, path, content, ending, bom, None, expected)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn save_as_with_encoding(
+        &mut self,
+        id: &str,
+        path: &Path,
+        content: &str,
+        ending: &str,
+        bom: bool,
+        encoding: Option<&str>,
         expected: Option<&str>,
     ) -> Result<Document> {
         let path = destination(path)?;
@@ -319,11 +520,24 @@ impl Files {
             ));
         }
         let content = materialize(content, ending, &doc.content)?;
-        let encoded = if bom {
-            format!("\u{feff}{content}").into_bytes()
-        } else {
-            content.as_bytes().to_vec()
+        let resolved_encoding = match encoding {
+            Some(enc) => enc,
+            None if matches!(
+                doc.encoding.as_str(),
+                "UTF-16 LE" | "UTF-16 BE" | "Windows-874"
+            ) && bom == doc.bom =>
+            {
+                doc.encoding.as_str()
+            }
+            None => {
+                if bom {
+                    "UTF-8 BOM"
+                } else {
+                    "UTF-8"
+                }
+            }
         };
+        let (encoded, final_bom, final_encoding) = encode_bytes(&content, bom, resolved_encoding)?;
         if encoded.len() as u64 > MAX_BYTES {
             return Err(AppError::new(
                 "too_large",
@@ -340,7 +554,8 @@ impl Files {
         doc.fingerprint = fingerprint(&encoded);
         doc.line_ending = line_ending(&content);
         doc.content = content;
-        doc.bom = bom;
+        doc.bom = final_bom;
+        doc.encoding = final_encoding;
         self.records.insert(id.to_owned(), doc.clone());
         Ok(doc)
     }
@@ -606,6 +821,56 @@ mod tests {
                     .to_string_lossy()
                     .into_owned()
             )
+        );
+    }
+
+    #[test]
+    fn opens_and_preserves_utf16_and_windows_874_encodings() {
+        let dir = tempdir().unwrap();
+        let mut service = Files::default();
+
+        // UTF-16 LE
+        let utf16le_path = dir.path().join("utf16le.txt");
+        let mut utf16le_bytes = vec![0xff, 0xfe];
+        for u in "สวัสดี\r\nRust".encode_utf16() {
+            utf16le_bytes.extend_from_slice(&u.to_le_bytes());
+        }
+        fs::write(&utf16le_path, &utf16le_bytes).unwrap();
+        let doc_le = service.open(&utf16le_path).unwrap();
+        assert_eq!(doc_le.encoding, "UTF-16 LE");
+        assert_eq!(doc_le.content, "สวัสดี\r\nRust");
+        let saved_le = service
+            .save(
+                &doc_le.id,
+                "สวัสดี\nRust!",
+                "Preserve",
+                doc_le.bom,
+                &doc_le.fingerprint,
+            )
+            .unwrap();
+        assert_eq!(saved_le.encoding, "UTF-16 LE");
+        assert!(fs::read(&utf16le_path).unwrap().starts_with(&[0xff, 0xfe]));
+
+        // Windows-874 (TIS-620 Thai)
+        let win874_path = dir.path().join("thai874.txt");
+        // "กขค\n" in Windows-874: 0xA1, 0xA2, 0xA4, 0x0A
+        fs::write(&win874_path, [0xa1, 0xa2, 0xa4, b'\n']).unwrap();
+        let doc_874 = service.open(&win874_path).unwrap();
+        assert_eq!(doc_874.encoding, "Windows-874");
+        assert_eq!(doc_874.content, "กขค\n");
+        let saved_874 = service
+            .save(
+                &doc_874.id,
+                "กขคง\n",
+                "Preserve",
+                doc_874.bom,
+                &doc_874.fingerprint,
+            )
+            .unwrap();
+        assert_eq!(saved_874.encoding, "Windows-874");
+        assert_eq!(
+            fs::read(&win874_path).unwrap(),
+            vec![0xa1, 0xa2, 0xa4, 0xa7, b'\n']
         );
     }
 

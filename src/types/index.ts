@@ -1,3 +1,9 @@
+export type Encoding =
+  | "UTF-8"
+  | "UTF-8 BOM"
+  | "UTF-16 LE"
+  | "UTF-16 BE"
+  | "Windows-874";
 export interface DocumentInfo {
   id: string;
   name: string;
@@ -6,12 +12,14 @@ export interface DocumentInfo {
   fingerprint: string;
   lineEnding: "LF" | "CRLF" | "CR" | "Mixed";
   bom: boolean;
+  encoding?: Encoding;
 }
 export type Ending = "Preserve" | "LF" | "CRLF";
 export interface DocumentMeta extends Omit<DocumentInfo, "content"> {
   dirty: boolean;
   language: string;
   ending: Ending;
+  encoding: Encoding;
   external: boolean;
 }
 export interface Settings {
@@ -43,6 +51,7 @@ export interface AppError {
 export interface OpenBatch {
   documents: DocumentInfo[];
   errors: AppError[];
+  folder?: Entry;
 }
 export interface Entry {
   id: string;
