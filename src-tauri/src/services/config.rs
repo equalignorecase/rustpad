@@ -106,8 +106,13 @@ mod platform_tests {
             Some("111.0.1661.0")
         );
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-        assert!(root.join("installer/src-tauri/tauri.conf.json").is_file());
+        let installer_conf = root.join("installer/src-tauri/tauri.conf.json");
+        assert!(installer_conf.is_file());
         assert!(root.join("installer/src-tauri/icons/icon.ico").is_file());
+        let installer_raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(installer_conf).unwrap()).unwrap();
+        let csp = installer_raw["app"]["security"]["csp"].as_str().unwrap();
+        assert!(csp.contains("http://ipc.localhost"));
     }
 
     #[test]
