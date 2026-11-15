@@ -87,7 +87,7 @@ mod platform_tests {
     };
 
     #[test]
-    fn windows_uses_native_controls_and_offline_nsis_installer() {
+    fn windows_uses_native_controls_and_custom_installer() {
         let (raw, _) = read_from(Target::Windows, Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
         let config: TauriConfig = serde_json::from_value(raw.clone()).unwrap();
         let window = &config.app.windows[0];
@@ -96,38 +96,18 @@ mod platform_tests {
         assert!(!window.hidden_title);
         assert!(window.traffic_light_position.is_none());
         assert_eq!(window.width, 1180.0);
-        assert_eq!(raw["bundle"]["targets"], serde_json::json!(["nsis"]));
+        assert_eq!(raw["bundle"]["targets"], serde_json::json!([]));
         assert!(matches!(
             config.bundle.windows.webview_install_mode,
-            WebviewInstallMode::OfflineInstaller { .. }
+            WebviewInstallMode::DownloadBootstrapper { .. }
         ));
         assert_eq!(
             config.bundle.windows.minimum_webview2_version.as_deref(),
             Some("111.0.1661.0")
         );
-        let nsis = config.bundle.windows.nsis.as_ref().unwrap();
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        assert!(manifest_dir.join(nsis.template.as_ref().unwrap()).is_file());
-        assert!(
-            manifest_dir
-                .join(nsis.header_image.as_ref().unwrap())
-                .is_file()
-        );
-        assert!(
-            manifest_dir
-                .join(nsis.sidebar_image.as_ref().unwrap())
-                .is_file()
-        );
-        assert!(
-            manifest_dir
-                .join(nsis.installer_icon.as_ref().unwrap())
-                .is_file()
-        );
-        assert!(
-            manifest_dir
-                .join(nsis.uninstaller_icon.as_ref().unwrap())
-                .is_file()
-        );
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        assert!(root.join("installer/src-tauri/tauri.conf.json").is_file());
+        assert!(root.join("installer/src-tauri/icons/icon.ico").is_file());
     }
 
     #[test]

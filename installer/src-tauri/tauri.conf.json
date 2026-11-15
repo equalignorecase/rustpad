@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "RustPad Setup",
+  "version": "0.1.0",
+  "identifier": "app.rustpad.installer",
+  "build": {
+    "beforeDevCommand": "pnpm vite --config ../vite.config.ts",
+    "devUrl": "http://localhost:1425",
+    "beforeBuildCommand": "pnpm vite build --config ../vite.config.ts",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "RustPad Setup",
+        "width": 540,
+        "height": 490,
+        "resizable": false,
+        "decorations": false,
+        "center": true,
+        "backgroundColor": "#1c1d20"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
