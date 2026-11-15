@@ -942,3 +942,7 @@ svg {
   z-index: 25;
   cursor: wait;
 }
+
+:root[data-platform="windows"] .titlebar {
+  padding-left: 14px;
+}

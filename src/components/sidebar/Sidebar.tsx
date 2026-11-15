@@ -1,3 +1,4 @@
+import { pathLabel } from "../../utils/paths";
 import { useState } from "react";
 import {
   ChevronDown,
@@ -181,8 +182,8 @@ export function Sidebar({
                 >
                   <File size={13} />
                   <span>
-                    {path.split("/").slice(-1)[0]}
-                    <small>{path.split("/").slice(-2, -1).join("/")}</small>
+                    {pathLabel(path).name}
+                    <small>{pathLabel(path).parent}</small>
                   </span>
                 </button>
               ))}
@@ -195,7 +196,7 @@ export function Sidebar({
       )}
       <div className="sidebar-footer">
         <span className="local-dot" />
-        On your Mac<span>Offline</span>
+        On this device<span>Offline</span>
       </div>
     </aside>
   );

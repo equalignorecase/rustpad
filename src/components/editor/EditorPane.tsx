@@ -1,3 +1,4 @@
+import { shortcutLabel } from "../../services/documents/shortcuts";
 import { useEffect, useRef, useState } from "react";
 import {
   EditorView,
@@ -118,7 +119,7 @@ export function EditorPane({
       EditorView.editable.of(!closing),
       EditorState.readOnly.of(closing),
       listener,
-      placeholder("Start typing, or open a file with ⌘O"),
+      placeholder(`Start typing, or open a file with ${shortcutLabel("open")}`),
       drawSelection(),
       dropCursor(),
       rectangularSelection(),
@@ -247,13 +248,13 @@ export function EditorPane({
           <p>A little text. A new idea. Your next project.</p>
           <div>
             <button className="button primary" onClick={() => run("new")}>
-              New document <kbd>⌘N</kbd>
+              New document <kbd>{shortcutLabel("new")}</kbd>
             </button>
             <button className="button" onClick={() => run("open")}>
-              Open a file <kbd>⌘O</kbd>
+              Open a file <kbd>{shortcutLabel("open")}</kbd>
             </button>
           </div>
-          <small>Local files. Nothing leaves this Mac.</small>
+          <small>Local files. Nothing leaves this device.</small>
         </div>
       )}
     </main>

@@ -1,3 +1,4 @@
+import { shortcutLabel } from "../../services/documents/shortcuts";
 import { File, Plus, X } from "lucide-react";
 import { useWorkspace } from "../../stores/workspace";
 import { documents } from "../../services/documents/controller";
@@ -86,7 +87,7 @@ export function TabBar() {
       <button
         className="icon-button new-tab"
         aria-label="New document"
-        title="New document (⌘N)"
+        title={`New document (${shortcutLabel("new")})`}
         onClick={() => documents.newDocument().catch(report)}
       >
         <Plus size={17} />

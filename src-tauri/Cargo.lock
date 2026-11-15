@@ -2625,6 +2625,7 @@ dependencies = [
 name = "rustpad"
 version = "0.1.0"
 dependencies = [
+ "same-file",
  "serde",
  "serde_json",
  "sha2",

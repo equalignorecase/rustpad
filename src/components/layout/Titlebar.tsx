@@ -1,3 +1,4 @@
+import { shortcutLabel } from "../../services/documents/shortcuts";
 import {
   Braces,
   Command,
@@ -20,7 +21,7 @@ export function Titlebar({ run }: { run: (command: Action) => void }) {
       <div className="titlebar-left" data-tauri-drag-region>
         <button
           className="icon-button"
-          title="Toggle sidebar (⌘B)"
+          title={`Toggle sidebar (${shortcutLabel("sidebar")})`}
           aria-label="Toggle sidebar"
           onClick={() => run("sidebar")}
         >
@@ -38,7 +39,7 @@ export function Titlebar({ run }: { run: (command: Action) => void }) {
         <button
           className="icon-button"
           aria-label="Open files"
-          title="Open files (⌘O)"
+          title={`Open files (${shortcutLabel("open")})`}
           onClick={() => run("open")}
         >
           <FolderOpen size={16} />
@@ -46,7 +47,7 @@ export function Titlebar({ run }: { run: (command: Action) => void }) {
         <button
           className="icon-button"
           aria-label="Save document"
-          title="Save (⌘S)"
+          title={`Save (${shortcutLabel("save")})`}
           disabled={!active || busy > 0}
           onClick={() => run("save")}
         >
@@ -56,7 +57,7 @@ export function Titlebar({ run }: { run: (command: Action) => void }) {
         <button
           className="icon-button"
           aria-label="Find in document"
-          title="Find (⌘F)"
+          title={`Find (${shortcutLabel("find")})`}
           disabled={!active}
           onClick={() => run("find")}
         >
@@ -65,7 +66,7 @@ export function Titlebar({ run }: { run: (command: Action) => void }) {
         <button
           className="icon-button"
           aria-label="Command palette"
-          title="Commands (⇧⌘P)"
+          title={`Commands (${shortcutLabel("palette")})`}
           onClick={() => run("palette")}
         >
           <Command size={16} />
@@ -73,7 +74,7 @@ export function Titlebar({ run }: { run: (command: Action) => void }) {
         <button
           className="icon-button"
           aria-label="Settings"
-          title="Settings (⌘,)"
+          title={`Settings (${shortcutLabel("settings")})`}
           onClick={() => run("settings")}
         >
           <Settings2 size={16} />

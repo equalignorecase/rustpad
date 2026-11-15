@@ -2,8 +2,8 @@ use crate::{
     errors::{AppError, Result},
     models::Document,
 };
+use same_file::Handle;
 use sha2::{Digest, Sha256};
-use std::os::unix::fs::MetadataExt;
 use std::{
     collections::HashMap,
     fs::{self, File},
@@ -28,8 +28,7 @@ fn read_bytes(path: &Path) -> Result<Vec<u8>> {
     let metadata = file.metadata()?;
     let identity = fs::symlink_metadata(path)?;
     if identity.file_type().is_symlink()
-        || identity.dev() != metadata.dev()
-        || identity.ino() != metadata.ino()
+        || Handle::from_file(file.try_clone()?)? != Handle::from_path(path)?
         || fs::canonicalize(path)? != path
     {
         return Err(AppError::new(
@@ -189,6 +188,8 @@ pub fn atomic_write(path: &Path, bytes: &[u8], expected: Option<&str>) -> Result
             .persist(path)
             .map_err(|e| AppError::from(e.error))?;
     }
+    // Windows cannot open and sync a directory using File::open; the temporary file is synced above.
+    #[cfg(unix)]
     File::open(parent)?.sync_all()?;
     Ok(())
 }
@@ -285,6 +286,7 @@ impl Files {
             .path
             .as_ref()
             .ok_or_else(|| AppError::new("save_as", "Choose a destination with Save As."))?;
+        check_target(Path::new(path), Some(expected))?;
         self.save_as(id, Path::new(path), content, ending, bom, Some(expected))
     }
 
@@ -366,6 +368,14 @@ pub fn existing_fingerprint(path: &Path) -> Result<Option<String>> {
         Err(error) => Err(error),
     }
 }
+pub fn launch_paths(args: impl IntoIterator<Item = std::ffi::OsString>) -> Vec<PathBuf> {
+    args.into_iter()
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+        .take(50)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,8 +449,15 @@ mod tests {
                 .code,
             "readonly"
         );
+        #[cfg(windows)]
+        {
+            let mut permissions = fs::metadata(&path).unwrap().permissions();
+            permissions.set_readonly(false);
+            fs::set_permissions(&path, permissions).unwrap();
+        }
     }
 
+    #[cfg(unix)]
     #[test]
     fn rejects_symlink_replacement_on_reload_and_inspect() {
         use std::os::unix::fs::symlink;
@@ -456,6 +473,120 @@ mod tests {
         assert_eq!(service.read(&doc.id).unwrap_err().code, "path");
         assert_eq!(service.inspect(&doc.id).unwrap_err().code, "path");
         assert_eq!(fs::read_to_string(outside).unwrap(), "not authorized");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn sharing_violation_keeps_original_file_and_local_changes_available() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("locked.txt");
+        fs::write(&path, "original").unwrap();
+        let mut service = Files::default();
+        let doc = service.open(&path).unwrap();
+        let held = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+        assert!(
+            service
+                .save(&doc.id, "local", "LF", false, &doc.fingerprint)
+                .is_err()
+        );
+        drop(held);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "original");
+        service
+            .save(&doc.id, "local", "LF", false, &doc.fingerprint)
+            .unwrap();
+        assert_eq!(fs::read_to_string(path).unwrap(), "local");
+    }
+
+    #[test]
+    fn saves_and_reopens_unicode_files_across_platforms() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("ภาษาไทย 🦀.txt");
+        let mut service = Files::default();
+        let doc = service.new_document();
+        let first = service
+            .save_as(&doc.id, &path, "first\nline", "CRLF", false, None)
+            .unwrap();
+        let saved = service
+            .save(
+                &doc.id,
+                "edited\nสวัสดี👩🏽‍💻",
+                "Preserve",
+                false,
+                &first.fingerprint,
+            )
+            .unwrap();
+        assert_eq!(fs::read(&path).unwrap(), "edited\r\nสวัสดี👩🏽‍💻".as_bytes());
+        assert_eq!(service.read(&saved.id).unwrap().content, "edited\r\nสวัสดี👩🏽‍💻");
+        service.close(&doc.id);
+        fs::File::create(&path)
+            .unwrap()
+            .set_len(MAX_BYTES + 1)
+            .unwrap();
+        assert_eq!(service.open(&path).unwrap_err().code, "too_large");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_replaced_parent_without_writing_outside_authorized_folder() {
+        use std::os::unix::fs::symlink;
+        let dir = tempdir().unwrap();
+        let parent = dir.path().join("authorized");
+        let moved = dir.path().join("moved");
+        let outside = dir.path().join("outside");
+        fs::create_dir(&parent).unwrap();
+        fs::create_dir(&outside).unwrap();
+        fs::write(parent.join("file.txt"), "original").unwrap();
+        fs::write(outside.join("file.txt"), "original").unwrap();
+        let mut service = Files::default();
+        let doc = service.open(&parent.join("file.txt")).unwrap();
+        fs::rename(&parent, &moved).unwrap();
+        symlink(&outside, &parent).unwrap();
+        assert_eq!(
+            service
+                .save(&doc.id, "local", "Preserve", false, &doc.fingerprint)
+                .unwrap_err()
+                .code,
+            "path"
+        );
+        assert_eq!(
+            fs::read_to_string(outside.join("file.txt")).unwrap(),
+            "original"
+        );
+    }
+
+    #[test]
+    fn accepts_only_existing_regular_files_from_native_launch_arguments() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("ชื่อไฟล์.txt");
+        fs::write(&path, "text").unwrap();
+        let args = vec![
+            path.clone().into_os_string(),
+            dir.path().as_os_str().into(),
+            "--help".into(),
+        ];
+        assert_eq!(launch_paths(args), vec![path]);
+    }
+
+    #[test]
+    fn refuses_save_as_over_existing_unconfirmed_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("existing.txt");
+        fs::write(&path, "keep original").unwrap();
+        let mut service = Files::default();
+        let doc = service.new_document();
+        assert_eq!(
+            service
+                .save_as(&doc.id, &path, "replacement", "LF", false, None)
+                .unwrap_err()
+                .code,
+            "conflict"
+        );
+        assert_eq!(fs::read_to_string(path).unwrap(), "keep original");
     }
 
     #[test]
@@ -480,6 +611,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn save_preserves_permissions_and_detects_size_limit() {
         use std::os::unix::fs::PermissionsExt;

@@ -76,3 +76,46 @@ mod tests {
         assert_eq!(std::fs::read_to_string(path).unwrap(), "broken{");
     }
 }
+
+#[cfg(test)]
+mod platform_tests {
+    use super::*;
+    use tauri::utils::TitleBarStyle;
+    use tauri::utils::{
+        config::{Config as TauriConfig, WebviewInstallMode, parse::read_from},
+        platform::Target,
+    };
+
+    #[test]
+    fn windows_uses_native_controls_and_offline_nsis_installer() {
+        let (raw, _) = read_from(Target::Windows, Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+        let config: TauriConfig = serde_json::from_value(raw.clone()).unwrap();
+        let window = &config.app.windows[0];
+        assert!(window.decorations);
+        assert!(matches!(window.title_bar_style, TitleBarStyle::Visible));
+        assert!(!window.hidden_title);
+        assert!(window.traffic_light_position.is_none());
+        assert_eq!(window.width, 1180.0);
+        assert_eq!(raw["bundle"]["targets"], serde_json::json!(["nsis"]));
+        assert!(matches!(
+            config.bundle.windows.webview_install_mode,
+            WebviewInstallMode::OfflineInstaller { .. }
+        ));
+        assert_eq!(
+            config.bundle.windows.minimum_webview2_version.as_deref(),
+            Some("111.0.1661.0")
+        );
+    }
+
+    #[test]
+    fn macos_keeps_overlay_traffic_lights_and_app_bundle() {
+        let (raw, _) = read_from(Target::MacOS, Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+        let config: TauriConfig = serde_json::from_value(raw.clone()).unwrap();
+        let window = &config.app.windows[0];
+        assert!(matches!(window.title_bar_style, TitleBarStyle::Overlay));
+        assert!(window.hidden_title);
+        assert!(window.traffic_light_position.is_some());
+        assert_eq!(window.width, 1180.0);
+        assert_eq!(raw["bundle"]["targets"], serde_json::json!(["app"]));
+    }
+}

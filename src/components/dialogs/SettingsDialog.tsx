@@ -43,7 +43,7 @@ export function SettingsDialog({
   return (
     <Modal
       title="Settings"
-      description="A quieter editor, configured your way. Saved on this Mac."
+      description="A quieter editor, configured your way. Saved on this device."
       open={open}
       onClose={onClose}
       className="settings-dialog"

@@ -31,7 +31,7 @@ function setup(overrides: Partial<Native> = {}) {
   } as Native;
   const editor = new EditorSession();
   const controller = new DocumentController(api, editor);
-  controller.add(info);
+  controller.add({ ...info });
   const state = editor.get("one").state;
   editor.update(
     "one",
@@ -189,4 +189,24 @@ it("allows quit after an explicit decision when preferences cannot be written", 
   useFeedback.getState().answer("quit");
   await quitting;
   expect(api.exit).toHaveBeenCalledTimes(1);
+});
+
+it("keeps the line ending chosen for an untitled document when defaults change", async () => {
+  const saveAs = vi.fn(async (_id: string, content: string) => ({
+    ...info,
+    content,
+    path: "/one",
+    lineEnding: "CRLF" as const,
+    fingerprint: "saved",
+  }));
+  const { controller, editor } = setup({ saveAs });
+  editor.get("one").info.lineEnding = "CRLF";
+  useWorkspace.getState().setSettings({ preferredEnding: "LF" });
+  expect(await controller.save("one")).toBe(true);
+  expect(saveAs).toHaveBeenCalledWith(
+    "one",
+    "unsaved ภาษาไทย👋",
+    "CRLF",
+    false,
+  );
 });

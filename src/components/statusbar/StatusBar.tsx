@@ -1,3 +1,4 @@
+import { shortcutLabel } from "../../services/documents/shortcuts";
 import { Check, Circle, WrapText } from "lucide-react";
 import { useCursor, useWorkspace } from "../../stores/workspace";
 import { documents } from "../../services/documents/controller";
@@ -44,7 +45,7 @@ export function StatusBar() {
         <div className="status-right">
           <button
             onClick={() => runEditorCommand("goto")}
-            title="Go to line / column (⌘G)"
+            title={`Go to line / column (${shortcutLabel("goto")})`}
           >
             Ln {cursor.line}, Col {cursor.column}
             {cursor.selected > 0 ? ` · ${cursor.selected} selected` : ""}

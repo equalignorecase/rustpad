@@ -1,23 +1,24 @@
+import { shortcutLabel } from "../../services/documents/shortcuts";
 import { useState } from "react";
 import { Search } from "lucide-react";
 import { Modal } from "../ui/dialog";
 import type { Command } from "../../types";
-export const commands: { id: Command; label: string; keys?: string }[] = [
-  { id: "new", label: "New document", keys: "⌘N" },
-  { id: "open", label: "Open files…", keys: "⌘O" },
+export const commands: { id: Command; label: string }[] = [
+  { id: "new", label: "New document" },
+  { id: "open", label: "Open files…" },
   { id: "folder", label: "Open folder…" },
-  { id: "save", label: "Save document", keys: "⌘S" },
-  { id: "saveAs", label: "Save document as…", keys: "⇧⌘S" },
-  { id: "close", label: "Close tab", keys: "⌘W" },
-  { id: "find", label: "Find in document", keys: "⌘F" },
-  { id: "replace", label: "Find and replace", keys: "⇧⌘F" },
-  { id: "goto", label: "Go to line / column…", keys: "⌘G" },
+  { id: "save", label: "Save document" },
+  { id: "saveAs", label: "Save document as…" },
+  { id: "close", label: "Close tab" },
+  { id: "find", label: "Find in document" },
+  { id: "replace", label: "Find and replace" },
+  { id: "goto", label: "Go to line / column…" },
   { id: "wrap", label: "Toggle word wrap" },
-  { id: "sidebar", label: "Toggle sidebar", keys: "⌘B" },
-  { id: "settings", label: "Open settings", keys: "⌘," },
-  { id: "nextTab", label: "Next tab", keys: "⇧⌘]" },
-  { id: "previousTab", label: "Previous tab", keys: "⇧⌘[" },
-  { id: "quit", label: "Quit RustPad", keys: "⌘Q" },
+  { id: "sidebar", label: "Toggle sidebar" },
+  { id: "settings", label: "Open settings" },
+  { id: "nextTab", label: "Next tab" },
+  { id: "previousTab", label: "Previous tab" },
+  { id: "quit", label: "Quit RustPad" },
 ];
 export function CommandPalette({
   onClose,
@@ -91,7 +92,7 @@ export function CommandPalette({
             onClick={() => execute(command.id)}
           >
             <span>{command.label}</span>
-            <kbd>{command.keys}</kbd>
+            <kbd>{shortcutLabel(command.id)}</kbd>
           </button>
         ))}
         {!results.length && (

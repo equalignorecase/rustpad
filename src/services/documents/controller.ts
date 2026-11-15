@@ -144,7 +144,7 @@ export class DocumentController {
     const session = this.editor.get(id);
     const snapshot = this.editor.snapshot(id);
     if (!session.info.path && snapshot.ending === "Preserve")
-      snapshot.ending = useWorkspace.getState().settings.preferredEnding;
+      snapshot.ending = session.info.lineEnding === "CRLF" ? "CRLF" : "LF";
     useWorkspace.setState((state) => ({ busy: state.busy + 1 }));
     try {
       if (

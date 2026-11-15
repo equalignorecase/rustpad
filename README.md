@@ -1,6 +1,6 @@
 # RustPad
 
-โปรแกรมแก้ไขข้อความและซอร์สโค้ดสำหรับ macOS ที่ทำงานกับไฟล์ในเครื่องและใช้งานออฟไลน์ได้ สร้างด้วย Tauri 2, Rust, React, TypeScript แบบ strict, Vite, Tailwind CSS 4, CodeMirror 6, Zustand, Lucide และคอมโพเนนต์ dialog ที่ดูแลในโครงการโดยใช้ Radix ตามแนวทาง shadcn/ui
+โปรแกรมแก้ไขข้อความและซอร์สโค้ดสำหรับ macOS และ Windows ที่ทำงานกับไฟล์ในเครื่องและใช้งานออฟไลน์ได้ สร้างด้วย Tauri 2, Rust, React, TypeScript แบบ strict, Vite, Tailwind CSS 4, CodeMirror 6, Zustand, Lucide และคอมโพเนนต์ dialog ที่ดูแลในโครงการโดยใช้ Radix ตามแนวทาง shadcn/ui
 
 ไม่มีบัญชีผู้ใช้ telemetry บริการคลาวด์ ฐานข้อมูล การเรียก shell ฟอนต์ภายนอก CDN หรือเว็บเซิร์ฟเวอร์ขณะใช้งานแอป ส่วน Vite ใช้เฉพาะระหว่างพัฒนา
 
@@ -11,6 +11,49 @@
 ไฟล์ใน workspace ที่ใช้พัฒนาอยู่ที่ `release/RustPad.app` และ `release/RustPad-macOS-arm64.zip` พร้อม checksum ใน `release/SHA256SUMS.txt` โฟลเดอร์ `release/` ถูกยกเว้นจาก Git จึงไม่มีไฟล์เหล่านี้ในซอร์สที่ clone จาก repository ให้ build ตามขั้นตอนด้านล่าง
 
 แอปที่ส่งมอบในเครื่องมีลายเซ็น ad-hoc ที่ตรวจสอบแล้ว แต่ยังไม่ได้ลงลายเซ็น Developer ID หรือผ่าน notarization ของ Apple
+
+## Windows
+
+เตรียมโค้ดและการตั้งค่า installer สำหรับ **Windows 10/11 x64** โดยใช้แถบหน้าต่างของระบบ ปุ่มย่อ/ขยาย/ปิด และคีย์ลัด Ctrl ตามแพลตฟอร์ม การปิดด้วย Alt+F4 จะผ่านขั้นตอนถามบันทึกเอกสารเช่นเดียวกับการปิดหน้าต่าง
+
+ค่าเริ่มต้นของ editor บน Windows คือฟอนต์ Consolas และ CRLF ส่วน macOS ยังคงใช้ Menlo และ LF การตั้งค่าเดิมของผู้ใช้ยังใช้ต่อได้ รายการไฟล์ล่าสุดรองรับทั้ง path แบบ drive letter, UNC และ path ของ macOS
+
+สถานะการตรวจสอบ: ทดสอบโค้ดร่วมและการอ่าน configuration ของทั้งสองแพลตฟอร์มบน macOS แล้ว แต่เครื่องพัฒนาไม่มี Windows SDK หรือ Windows runner จึงยังไม่ได้ยืนยันว่า Windows build, installer และ UI ผ่านจริง ดูรายการที่ต้องตรวจใน [QA.md](QA.md)
+
+### เตรียมเครื่อง Windows
+
+ติดตั้งตาม [ข้อกำหนดของ Tauri สำหรับ Windows](https://v2.tauri.app/start/prerequisites/#windows):
+
+- Microsoft C++ Build Tools พร้อม workload **Desktop development with C++** และ Windows SDK
+- Rust toolchain แบบ MSVC ผ่าน rustup
+- Node.js 22.12 ขึ้นไป และ pnpm 10.28.2
+- Microsoft Edge WebView2 Runtime สำหรับการรันระหว่างพัฒนา
+
+รันใน PowerShell จากโฟลเดอร์โครงการ:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm tauri dev
+
+# ทดสอบและ build installer
+pnpm test
+pnpm check
+pnpm test:rust
+pnpm lint:rust
+pnpm tauri build --bundles nsis
+```
+
+ผลลัพธ์ installer อยู่ที่ `src-tauri/target/release/bundle/nsis/` ใช้การติดตั้งเฉพาะผู้ใช้ปัจจุบัน และกำหนดให้แนบตัวติดตั้ง WebView2 แบบ offline ตาม [คู่มือ Windows installer ของ Tauri](https://v2.tauri.app/distribute/windows-installer/)
+
+ขั้นตอน build ยังต้องใช้อินเทอร์เน็ตเพื่อดาวน์โหลด dependency, NSIS และ WebView2 payload แต่ installer ที่สร้างตาม configuration นี้แนบ runtime ไว้สำหรับเครื่องปลายทางที่ไม่มีอินเทอร์เน็ต จึงมีขนาดใหญ่กว่า macOS bundle ต้องตรวจการติดตั้งออฟไลน์บน Windows จริงก่อนแจกจ่าย ยังไม่มี Windows code-signing certificate และอาจพบคำเตือนจาก SmartScreen
+
+Configuration บน Windows อยู่ที่ `%APPDATA%\app.rustpad.editor\settings.json` รองรับการเปิดไฟล์จาก argument ของ native process ซึ่ง Windows ใช้กับ Open With ส่วนการเปิดไฟล์เข้าสู่โปรเซสที่รันอยู่แล้วไม่อยู่ในขอบเขตนี้
+
+### Build ผ่าน GitHub Actions
+
+ไฟล์ `.github/workflows/windows.yml` จะรันทดสอบ TypeScript/Rust, ตรวจรูปแบบและ Clippy, build NSIS แล้วแนบ installer พร้อม SHA-256 ไว้ใน artifact ชื่อ `RustPad-windows-x64` เมื่อ push ไป `main`, เปิด pull request หรือสั่ง workflow ด้วยตนเอง
+
+ดาวน์โหลดได้จากหน้า Actions ของรอบที่สำเร็จ โดย artifact เก็บไว้ 14 วัน Workflow ใช้สิทธิ์อ่าน repository และ **ไม่สร้าง GitHub Release หรือเผยแพร่แอปโดยอัตโนมัติ** ยังไม่ได้รัน workflow นี้บน GitHub จากงานครั้งนี้
 
 ## เริ่มพัฒนาจากซอร์ส
 
@@ -41,7 +84,7 @@ pnpm tauri dev
 
 ## ความสามารถ
 
-- สร้างเอกสาร เปิดไฟล์ผ่าน dialog ของ macOS บันทึก และ Save As รองรับหลายแท็บ ลากจัดลำดับแท็บ และสลับแท็บด้วยคีย์บอร์ด
+- สร้างเอกสาร เปิดไฟล์ผ่าน dialog ของระบบ บันทึก และ Save As รองรับหลายแท็บ ลากจัดลำดับแท็บ และสลับแท็บด้วยคีย์บอร์ด
 - ตรวจสถานะแก้ไขจาก snapshot ของข้อความ แยกประวัติ undo ของแต่ละแท็บ และเก็บตำแหน่งเคอร์เซอร์กับตำแหน่งเลื่อนหน้าจอ
 - ถาม Save / Don’t Save / Cancel ก่อนปิดเอกสารที่แก้ไข การยกเลิกหรือบันทึกไม่สำเร็จจะเก็บเอกสารไว้ การปิดหน้าต่างและ Quit จะรอการตัดสินใจและการเขียนไฟล์ให้เสร็จ
 - เน้นไวยากรณ์ Rust, TypeScript, JavaScript, JSON, HTML, CSS, Markdown, Python, PHP, SQL, TOML และข้อความธรรมดา ตรวจภาษาจากชื่อไฟล์หรือเลือกเองได้ แพ็กเกจภาษาถูกโหลดจากแอปเมื่อจำเป็น
@@ -56,18 +99,19 @@ pnpm tauri dev
 
 ## คีย์ลัด
 
-| การทำงาน                                  | คีย์ลัด              |
-| ----------------------------------------- | -------------------- |
-| สร้าง / เปิด / บันทึก                     | ⌘N / ⌘O / ⌘S         |
-| Save As / ปิดแท็บ / ออกจากแอป             | ⇧⌘S / ⌘W / ⌘Q        |
-| ค้นหา / แทนที่                            | ⌘F / ⇧⌘F             |
-| ไปบรรทัด หรือ line:column                 | ⌘G                   |
-| Command palette                           | ⇧⌘P หรือ ⌘P          |
-| ตั้งค่า / แสดงหรือซ่อน sidebar            | ⌘, / ⌘B              |
-| แท็บก่อนหน้า / ถัดไป                      | ⇧⌘[ / ⇧⌘]            |
-| จัดลำดับแท็บที่มีโฟกัส                    | Ctrl+Shift+Arrow key |
-| ผลค้นหาถัดไป / ก่อนหน้า ขณะโฟกัสช่องค้นหา | Enter / Shift+Enter  |
-| Undo / Redo                               | ⌘Z / ⇧⌘Z             |
+| การทำงาน                                  | macOS                | Windows                           |
+| ----------------------------------------- | -------------------- | --------------------------------- |
+| สร้าง / เปิด / บันทึก                     | ⌘N / ⌘O / ⌘S         | Ctrl+N / Ctrl+O / Ctrl+S          |
+| Save As                                   | ⇧⌘S                  | Ctrl+Shift+S                      |
+| ปิดแท็บ / ออกจากแอป                       | ⌘W / ⌘Q              | Ctrl+W / Alt+F4                   |
+| ค้นหา / แทนที่                            | ⌘F / ⇧⌘F             | Ctrl+F / Ctrl+H                   |
+| ไปบรรทัด หรือ line:column                 | ⌘G                   | Ctrl+G                            |
+| Command palette                           | ⇧⌘P หรือ ⌘P          | Ctrl+Shift+P หรือ Ctrl+P          |
+| ตั้งค่า / แสดงหรือซ่อน sidebar            | ⌘, / ⌘B              | Ctrl+, / Ctrl+B                   |
+| แท็บก่อนหน้า / ถัดไป                      | ⇧⌘[ / ⇧⌘]            | Ctrl+Shift+Tab / Ctrl+Tab         |
+| จัดลำดับแท็บที่มีโฟกัส                    | Ctrl+Shift+Arrow key | Ctrl+Shift+Arrow key              |
+| ผลค้นหาถัดไป / ก่อนหน้า ขณะโฟกัสช่องค้นหา | Enter / Shift+Enter  | Enter / Shift+Enter               |
+| Undo / Redo                               | ⌘Z / ⇧⌘Z             | Ctrl+Z / Ctrl+Y หรือ Ctrl+Shift+Z |
 
 ภายใน CodeMirror ปุ่ม Tab ใช้เยื้องข้อความ กด Escape แล้วกด Tab เพื่อย้ายโฟกัสออกจาก editor ส่วนแถบแท็บใช้ปุ่มลูกศรเพื่อนำทางได้
 
@@ -81,11 +125,13 @@ Rust เป็นผู้เรียก dialog ของระบบและ�
 
 การบันทึกข้อความที่ไม่เปลี่ยนจะรักษา LF, CRLF และรูปแบบขึ้นบรรทัดผสมเดิมไว้ หากแก้ไขไฟล์ที่มีรูปแบบขึ้นบรรทัดผสม ระบบจะถามให้เลือก LF หรือ CRLF ก่อนบันทึก แถบสถานะมีตัวเลือกแปลงรูปแบบขึ้นบรรทัดและเลือก UTF-8 BOM การนับคอลัมน์และความยาว selection ใช้ Unicode code point ส่วน CodeMirror ดูแล composition และการแก้ไขตาม grapheme
 
-การบันทึกจะเขียนไฟล์ชั่วคราวในโฟลเดอร์เดียวกับปลายทาง รักษาสิทธิ์ Unix ทำ sync ตรวจ fingerprint ของต้นฉบับซ้ำ แล้วแทนที่ไฟล์แบบ atomic สำหรับปลายทางใหม่จะใช้วิธีที่ไม่เขียนทับไฟล์ที่เพิ่งปรากฏขึ้นระหว่างทาง
+การบันทึกจะเขียนไฟล์ชั่วคราวในโฟลเดอร์เดียวกับปลายทาง รักษาสิทธิ์ไฟล์ที่ระบบรองรับ ทำ sync ตรวจ fingerprint ของต้นฉบับซ้ำ แล้วแทนที่ไฟล์แบบ atomic สำหรับปลายทางใหม่จะใช้วิธีที่ไม่เขียนทับไฟล์ที่เพิ่งปรากฏขึ้นระหว่างทาง
 
 หากต้นฉบับเปลี่ยนหรือถูกลบ จะไม่ให้ใช้ Save ปกติ ระบบปฏิเสธกรณีไฟล์ถูกแทนด้วย symlink หรือโฟลเดอร์แม่เปลี่ยน ข้อผิดพลาดจะไม่ลบข้อความใน editor และ Save As จะไม่เขียนทับไฟล์ที่เปิดอยู่ในแท็บอื่น
 
 การแทนที่แบบ atomic ทำให้ inode เปลี่ยน ไม่รักษา extended attributes, ACL และความสัมพันธ์ hard link ยังมีช่วงเวลาสั้น ๆ ที่อีกโปรเซสอาจเขียนไฟล์ระหว่างการตรวจ fingerprint ครั้งสุดท้ายกับ rename ระบบนี้จึงไม่ใช่กลไกล็อกไฟล์สำหรับการแก้ไขร่วมกัน ส่วน Save As ใช้การยืนยันเขียนทับของ dialog ระบบ
+
+บน Unix จะ sync โฟลเดอร์หลังแทนที่ด้วย ส่วน Windows จะ sync ไฟล์ชั่วคราวก่อนแทนที่ และไม่เรียก `File::open` กับโฟลเดอร์ซึ่งไม่รองรับบน Windows
 
 Configuration บน macOS อยู่ที่ `~/Library/Application Support/app.rustpad.editor/settings.json` เก็บการตั้งค่าและ path ของไฟล์ แต่ไม่เก็บข้อความในเอกสาร และเขียนแบบ atomic หาก configuration เสียหาย แอปจะเริ่มด้วยค่าเริ่มต้นและหยุดเขียน configuration จนกว่าจะซ่อมหรือย้ายไฟล์ที่เสียออก ข้อมูลเดิมจะยังอยู่ โค้ดแอปไม่บันทึก path ที่ละเอียดอ่อนหรือเนื้อหาเอกสารลง log
 
@@ -119,7 +165,7 @@ pnpm tauri build --bundles app
 export CARGO_HOME="$PWD/.tools/cargo"
 ```
 
-ผลที่ตรวจล่าสุด: frontend **19 รายการ** และ Rust **8 รายการ** ผ่าน รวมถึง strict TypeScript, Clippy ที่ไม่ยอมรับ warning, การจัดรูปแบบ Rust และ production build ดูรายละเอียดกับรายการที่ยังไม่ได้ตรวจใน [QA.md](QA.md)
+ผลที่ตรวจล่าสุด: frontend **25 รายการ** และ Rust **14 รายการบน macOS** ผ่าน รวมถึง strict TypeScript, Clippy ที่ไม่ยอมรับ warning, การจัดรูปแบบ Rust และ production build ดูรายละเอียดกับรายการที่ยังไม่ได้ตรวจใน [QA.md](QA.md)
 
 การทดสอบครอบคลุม CodeMirror จริงสำหรับค้นหา แทนที่ และ undo, สถานะแท็บ, validation ของการตั้งค่า, การแก้ไขระหว่างบันทึก, การยกเลิก Save As และ Quit, auto save ที่ล้มเหลว, การตัดสินใจเมื่อไฟล์ภายนอกเปลี่ยน, UTF-8/BOM/รูปแบบขึ้นบรรทัด, การรักษาสิทธิ์ไฟล์, conflict, ไฟล์ที่ถูกลบหรืออ่านอย่างเดียว, ขนาดไฟล์ และการบันทึก metadata
 
@@ -163,6 +209,7 @@ Bundle ในเครื่องยังไม่ได้ลงลายเ�
 ## ข้อจำกัด
 
 - กู้ไฟล์ที่บันทึกแล้วจากดิสก์ ข้อความที่ยังไม่บันทึกและประวัติ undo ไม่คงอยู่หลังแอป crash หรือถูกบังคับปิด การปิดตามปกติจะถามก่อนทิ้งข้อความ
+- Windows ยังไม่ได้ build หรือทดสอบบนระบบจริงจากเครื่องนี้ และยังไม่ควรประกาศว่า Windows พร้อมใช้งานแบบ stable
 - ยังไม่มีหน้าดู diff/compare, เส้นนำการเยื้อง, ตัวถอดรหัส legacy encoding, การแก้ไขหลายหน้าต่าง, การเฝ้าดูโฟลเดอร์แบบสด, auto updater หรือระบบส่วนขยาย
 - แสดงสูงสุด 500 รายการต่อโฟลเดอร์และไม่รวม symlink เมื่อโฟลเดอร์เปลี่ยนต้อง refresh หรือเปิดใหม่ รองรับ 50 ไฟล์แรกต่อชุดการเปิด ลากไฟล์ หรือกู้ session
 - การตรวจไฟล์ภายนอกจะอ่านและ hash ไฟล์ที่เปิดอยู่ทุก 3 วินาทีขณะมองเห็นหน้าต่าง ยังต้องวัดผลเพิ่มเติมสำหรับงานที่เปิดหลายไฟล์หรือใช้ดิสก์และ network volume ที่ช้า จำกัดขนาดไว้ที่ 10 MiB ไม่ได้อ้างว่ารองรับไฟล์ใหญ่ได้ไม่จำกัด

@@ -1,22 +1,27 @@
 import { create } from "zustand";
+import { isMac } from "../utils/platform";
 import type { DocumentInfo, DocumentMeta, Settings } from "../types";
 
-export const defaultSettings: Settings = {
-  theme: "dark",
-  fontFamily: "Menlo",
-  fontSize: 13,
-  tabSize: 4,
-  indentWithTabs: false,
-  wordWrap: false,
-  lineNumbers: true,
-  autoIndent: true,
-  bracketMatching: true,
-  showRecent: true,
-  restoreSession: true,
-  autoSave: false,
-  preferredEnding: "LF",
-};
+export function settingsForPlatform(mac: boolean): Settings {
+  return {
+    theme: "dark",
+    fontFamily: mac ? "Menlo" : "Consolas",
+    fontSize: 13,
+    tabSize: 4,
+    indentWithTabs: false,
+    wordWrap: false,
+    lineNumbers: true,
+    autoIndent: true,
+    bracketMatching: true,
+    showRecent: true,
+    restoreSession: true,
+    autoSave: false,
+    preferredEnding: mac ? "LF" : "CRLF",
+  };
+}
+export const defaultSettings = settingsForPlatform(isMac);
 export const fonts = [
+  "Consolas",
   "Menlo",
   "SFMono-Regular",
   "Monaco",
@@ -43,7 +48,8 @@ export function validateSettings(input: unknown): Settings {
     settings.fontSize = Math.min(28, Math.max(10, Math.round(value.fontSize)));
   if (typeof value.tabSize === "number" && Number.isFinite(value.tabSize))
     settings.tabSize = Math.min(8, Math.max(2, Math.round(value.tabSize)));
-  if (value.preferredEnding === "CRLF") settings.preferredEnding = "CRLF";
+  if (value.preferredEnding === "CRLF" || value.preferredEnding === "LF")
+    settings.preferredEnding = value.preferredEnding;
   return settings;
 }
 

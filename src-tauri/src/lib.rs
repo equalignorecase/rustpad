@@ -13,9 +13,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let config_path = app.path().app_config_dir()?.join("settings.json");
-            app.manage(Backend::new(config_path));
-            let menu = tauri::menu::Menu::default(app.handle())?;
-            app.set_menu(menu)?;
+            let backend = Backend::new(config_path);
+            backend.queue(services::files::launch_paths(std::env::args_os().skip(1)));
+            app.manage(backend);
+            #[cfg(target_os = "macos")]
+            {
+                let menu = tauri::menu::Menu::default(app.handle())?;
+                app.set_menu(menu)?;
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

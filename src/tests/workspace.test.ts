@@ -89,12 +89,14 @@ describe("editor sessions", () => {
 });
 describe("keyboard dispatch", () => {
   it("handles save as separately from save and ignores composing input", () => {
-    expect(shortcut({ key: "s", metaKey: true, shiftKey: true })).toBe(
+    expect(shortcut({ key: "s", metaKey: true, shiftKey: true }, true)).toBe(
       "saveAs",
     );
-    expect(shortcut({ key: "s", metaKey: true })).toBe("save");
-    expect(shortcut({ key: "n", metaKey: true, isComposing: true })).toBe(null);
-    expect(shortcut({ key: "q", metaKey: true })).toBe("quit");
+    expect(shortcut({ key: "s", metaKey: true }, true)).toBe("save");
+    expect(shortcut({ key: "n", metaKey: true, isComposing: true }, true)).toBe(
+      null,
+    );
+    expect(shortcut({ key: "q", metaKey: true }, true)).toBe("quit");
     expect(shortcut({ key: "s", ctrlKey: true, altKey: true })).toBe(null);
   });
 });
