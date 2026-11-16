@@ -1,6 +1,9 @@
+import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { useWorkspace, fonts } from "../../stores/workspace";
 import { Modal } from "../ui/dialog";
-import type { Settings } from "../../types";
+import { checkForUpdates, openReleasePage } from "../../services/updates";
+import type { Settings, UpdateInfo } from "../../types";
 export function SettingsDialog({
   open,
   onClose,
@@ -10,6 +13,25 @@ export function SettingsDialog({
 }) {
   const settings = useWorkspace((state) => state.settings);
   const setSettings = useWorkspace((state) => state.setSettings);
+  const [checking, setChecking] = useState(false);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    getVersion()
+      .then((value) => !disposed && setVersion(value))
+      .catch(() => !disposed && setVersion(null));
+    return () => {
+      disposed = true;
+    };
+  }, []);
+  const check = async () => {
+    if (checking) return;
+    setChecking(true);
+    const info = await checkForUpdates();
+    if (info) setUpdate(info);
+    setChecking(false);
+  };
   const toggles: [keyof Settings, string, string][] = [
     ["wordWrap", "Word wrap", "Keep long lines within the editor"],
     ["lineNumbers", "Line numbers", "Show the gutter beside your text"],
@@ -127,6 +149,40 @@ export function SettingsDialog({
           </label>
         ))}
       </div>
+      <div className="settings-about">
+        <div className="settings-about-text">
+          <strong>RustPad{version ? ` v${version}` : ""}</strong>
+          {update ? (
+            update.updateAvailable ? (
+              <small className="update-available">
+                Version {update.latestVersion} is available
+                {formatPublishedAt(update.publishedAt)}.
+              </small>
+            ) : (
+              <small>You're up to date.</small>
+            )
+          ) : (
+            <small>Check GitHub for a newer release.</small>
+          )}
+        </div>
+        <div className="settings-about-actions">
+          <button
+            className="button small"
+            onClick={() => void check()}
+            disabled={checking}
+          >
+            {checking ? "Checking…" : "Check for updates"}
+          </button>
+          {update?.updateAvailable && (
+            <button
+              className="button small primary"
+              onClick={() => void openReleasePage(update)}
+            >
+              Download v{update.latestVersion}
+            </button>
+          )}
+        </div>
+      </div>
       <div className="dialog-actions">
         <button className="button primary" onClick={onClose}>
           Done
@@ -134,4 +190,9 @@ export function SettingsDialog({
       </div>
     </Modal>
   );
+}
+function formatPublishedAt(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : ` (published ${date.toLocaleDateString()})`;
 }

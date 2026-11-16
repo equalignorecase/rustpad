@@ -7,6 +7,7 @@ import type {
   Entry,
   OpenBatch,
   Settings,
+  UpdateInfo,
 } from "../../types";
 
 function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -65,6 +66,8 @@ export const native = {
   restore: () => call<OpenBatch>("restore_session"),
   exit: () => call<void>("exit_app"),
   chooseFolder: () => call<Entry | null>("choose_folder"),
+  checkUpdate: () => call<UpdateInfo>("check_update"),
+  openReleasePage: (url: string) => call<void>("open_release_page", { url }),
   listFolder: (id: string) =>
     call<{ entries: Entry[]; truncated: boolean }>("list_folder", { id }),
   openEntry: (id: string) => call<OpenBatch>("open_entry", { id }),

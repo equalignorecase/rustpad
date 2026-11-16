@@ -756,6 +756,55 @@ svg {
   padding: 0 9px;
   font-size: 12px;
 }
+.settings-about {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 13px 0 0;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.settings-about-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.settings-about-text strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.settings-about-text small {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.settings-about-text .update-available {
+  color: var(--accent);
+}
+.settings-about-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+}
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.icon-button .spinning {
+  animation: spin 1s linear infinite;
+}
+.button:disabled,
+.icon-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
 .settings-toggles {
   border-top: 1px solid var(--border);
 }

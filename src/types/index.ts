@@ -53,6 +53,13 @@ export interface OpenBatch {
   errors: AppError[];
   folder?: Entry;
 }
+export interface UpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  publishedAt: string | null;
+}
 export interface Entry {
   id: string;
   name: string;

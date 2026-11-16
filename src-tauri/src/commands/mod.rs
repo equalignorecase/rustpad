@@ -4,6 +4,7 @@ use crate::{
     services::{
         config,
         files::{Files, destination, existing_fingerprint},
+        updater,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -403,4 +404,43 @@ pub async fn open_entry(id: String, backend: State<'_, Backend>) -> Result<OpenB
             path
         };
     open_paths(&backend, vec![path])
+}
+
+#[tauri::command]
+pub async fn check_update() -> Result<updater::UpdateInfo> {
+    tauri::async_runtime::spawn_blocking(|| updater::check_latest(env!("CARGO_PKG_VERSION")))
+        .await
+        .map_err(|_| AppError::new("internal", "The update check could not complete."))?
+}
+#[tauri::command]
+pub async fn open_release_page(url: String) -> Result<()> {
+    updater::validate_release_url(&url)?;
+    open_in_browser(&url)
+}
+
+fn open_in_browser(url: &str) -> Result<()> {
+    let mut command = browser_command(url);
+    command
+        .spawn()
+        .map_err(|_| AppError::new("open", "Could not open your browser."))?;
+    Ok(())
+}
+#[cfg(target_os = "windows")]
+fn browser_command(url: &str) -> std::process::Command {
+    // Direct spawn: no shell is involved, so no argument can be re-parsed.
+    let mut command = std::process::Command::new("rundll32");
+    command.args(["url.dll,FileProtocolHandler", url]);
+    command
+}
+#[cfg(target_os = "macos")]
+fn browser_command(url: &str) -> std::process::Command {
+    let mut command = std::process::Command::new("open");
+    command.arg(url);
+    command
+}
+#[cfg(all(unix, not(target_os = "macos")))]
+fn browser_command(url: &str) -> std::process::Command {
+    let mut command = std::process::Command::new("xdg-open");
+    command.arg(url);
+    command
 }
