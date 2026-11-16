@@ -1038,3 +1038,517 @@ svg {
 :root[data-platform="windows"] .titlebar {
   padding-left: 14px;
 }
+
+/* ==================== Notepad++ Classic Theme UI ==================== */
+
+.npp-header {
+  display: flex;
+  flex-direction: column;
+  background: #f0f0f0 !important;
+  color: #111 !important;
+  border-bottom: 1px solid #d0d0d0 !important;
+  user-select: none;
+}
+
+.npp-title-bar {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: #f5f6f7 !important;
+  border-bottom: 1px solid #e1e2e4 !important;
+  font-size: 12px;
+}
+
+.npp-title-bar-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #333 !important;
+}
+
+.npp-app-icon {
+  font-size: 14px;
+}
+
+/* Notepad++ Menubar */
+.npp-menubar {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 4px;
+  background: #f0f0f0 !important;
+  color: #111 !important;
+  font-size: 12px;
+}
+
+.npp-menu-item {
+  position: relative;
+}
+
+.npp-menu-button {
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #222 !important;
+  border-radius: 2px;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.npp-menu-button:hover,
+.npp-menu-button.active {
+  background: rgba(0, 0, 0, 0.08) !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+.npp-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  min-width: 190px;
+  background: #fcfcfc;
+  border: 1px solid #bbb;
+  box-shadow: 2px 3px 8px rgba(0, 0, 0, 0.2);
+  padding: 3px 0;
+  border-radius: 2px;
+}
+
+.npp-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 14px;
+  font-size: 12px;
+  text-align: left;
+  color: #222;
+  border: 0;
+  background: transparent;
+}
+
+.npp-dropdown-item:hover:not(:disabled) {
+  background: #2b78e4;
+  color: #fff;
+}
+
+.npp-dropdown-item:disabled {
+  color: #999;
+}
+
+.npp-dropdown-shortcut {
+  font-size: 11px;
+  color: #777;
+  margin-left: 18px;
+}
+
+.npp-dropdown-item:hover:not(:disabled) .npp-dropdown-shortcut {
+  color: #e0f0ff;
+}
+
+.npp-dropdown-divider {
+  height: 1px;
+  background: #e2e2e2;
+  margin: 3px 0;
+}
+
+/* Notepad++ Toolbar */
+.npp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 0 6px;
+  background: #f7f7f8 !important;
+  border-bottom: 1px solid #d8d8d8 !important;
+  color: #333 !important;
+  flex-shrink: 0;
+}
+
+.npp-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+}
+
+.npp-tool-btn:hover:not(:disabled) {
+  background: #e4eaf2;
+  border-color: #b0c4de;
+}
+
+.npp-tool-btn.active {
+  background: #d6e2f0;
+  border-color: #8daed4;
+}
+
+.npp-tool-btn:disabled {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
+.npp-tool-divider {
+  width: 1px;
+  height: 18px;
+  background: #d0d0d0;
+  margin: 0 4px;
+}
+
+/* Notepad++ TabBar (Classic Windows Tabs) */
+.npp-tabbar {
+  display: flex;
+  align-items: flex-end;
+  height: 28px;
+  background: #e8e9eb !important;
+  border-bottom: 1px solid #b8b8b8 !important;
+  padding-left: 4px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.npp-tab-strip {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: 2px;
+}
+
+.npp-tab-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.npp-tab {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  background: #d8dade !important;
+  color: #444 !important;
+  border: 1px solid #b0b4b8 !important;
+  border-bottom: 0 !important;
+  border-radius: 4px 4px 0 0;
+  font-size: 12px;
+  max-width: 220px;
+  cursor: pointer;
+  position: relative;
+  top: 1px;
+  transition: none;
+}
+
+.npp-tab:hover:not(.active) {
+  background: #e2e4e8 !important;
+  color: #222 !important;
+}
+
+.npp-tab.active {
+  height: 26px;
+  background: #202124 !important; /* Matches Dark Editor in sample image */
+  color: #ffffff !important;
+  border-color: #555555 !important;
+  border-bottom: 1px solid #202124 !important;
+  font-weight: 500;
+  z-index: 2;
+}
+
+.npp-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npp-tab-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.npp-tab-icon.saved {
+  color: #3b82f6; /* Blue icon in Notepad++ when saved */
+}
+
+.npp-tab-icon.dirty {
+  color: #ef4444; /* Red icon in Notepad++ when edited/unsaved */
+}
+
+.npp-tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npp-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 6px;
+  border-radius: 2px;
+  border: 0;
+  background: transparent;
+  color: #888;
+  padding: 0;
+}
+
+.npp-tab.active .npp-tab-close {
+  color: #e53e3e; /* Notepad++ classic red close 'x' on active tab */
+}
+
+.npp-tab-close:hover {
+  background: #e53e3e;
+  color: #ffffff !important;
+}
+
+.npp-new-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0 4px 2px 6px;
+  border-radius: 3px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #666;
+}
+
+.npp-new-tab-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+/* ==================== Notepad++ Classic Sunken StatusBar ==================== */
+
+.npp-statusbar {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  background: #f0f0f0;
+  border-top: 1px solid #d0d0d0;
+  padding: 1px 2px;
+  gap: 2px;
+  font-size: 11px;
+  color: #000;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+:root[data-theme="dark"] .npp-statusbar {
+  background: #2b2b2b;
+  border-top: 1px solid #3c3c3c;
+  color: #ccc;
+}
+
+.npp-status-box {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  background: #f0f0f0;
+  border-top: 1px solid #a0a0a0;
+  border-left: 1px solid #a0a0a0;
+  border-bottom: 1px solid #ffffff;
+  border-right: 1px solid #ffffff;
+  box-shadow: inset 1px 1px 0px #808080;
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+:root[data-theme="dark"] .npp-status-box {
+  background: #242424;
+  border-top: 1px solid #1a1a1a;
+  border-left: 1px solid #1a1a1a;
+  border-bottom: 1px solid #444444;
+  border-right: 1px solid #444444;
+  box-shadow: inset 1px 1px 0px #111111;
+  color: #ccc;
+}
+
+.npp-status-main {
+  flex: 1;
+  min-width: 80px;
+}
+
+.npp-status-interactive {
+  cursor: pointer;
+  color: inherit;
+}
+
+.npp-status-interactive:hover {
+  background: #e8e8e8;
+}
+
+:root[data-theme="dark"] .npp-status-interactive:hover {
+  background: #2e2e2e;
+}
+
+.npp-status-select-wrapper {
+  padding: 0 2px;
+}
+
+.npp-status-select {
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 11px;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.npp-status-select option {
+  background: #ffffff;
+  color: #000000;
+}
+
+:root[data-theme="dark"] .npp-status-select option {
+  background: #2b2b2b;
+  color: #ffffff;
+}
+
+.npp-status-ins {
+  width: 32px;
+  justify-content: center;
+  font-weight: 600;
+}
+
+/* ==================== Notepad++ Classic Gutter & Margins ==================== */
+
+.cm-gutters {
+  background-color: #2f3136 !important;
+  color: #858995 !important;
+  border-right: 1px solid #40444b !important;
+  font-family: Consolas, "Courier New", monospace !important;
+  font-size: 13px !important;
+  user-select: none;
+}
+
+:root[data-theme="light"] .cm-gutters {
+  background-color: #e8e8e8 !important;
+  color: #787878 !important;
+  border-right: 1px solid #c0c0c0 !important;
+}
+
+.cm-lineNumbers .cm-gutterElement {
+  padding: 0 8px 0 6px !important;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Active line number highlight in gutter */
+.cm-activeLineGutter {
+  background-color: #3b3e45 !important;
+  color: #ffffff !important;
+  font-weight: 500;
+}
+
+:root[data-theme="light"] .cm-activeLineGutter {
+  background-color: #d8d8d8 !important;
+  color: #000000 !important;
+}
+
+/* Fold gutter (+/- buttons) */
+.cm-foldGutter span {
+  font-size: 11px;
+  line-height: 1;
+  color: #858995;
+}
+
+.cm-foldGutter span:hover {
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .cm-foldGutter span:hover {
+  color: #000000;
+}
+
+/* Active line in editor */
+.cm-activeLine {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+:root[data-theme="light"] .cm-activeLine {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+/* ==================== Notepad++ Document Map (Minimap) ==================== */
+
+.editor-split-container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.npp-docmap {
+  width: 160px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #202124;
+  border-left: 1px solid #3c3c3c;
+  overflow: hidden;
+  user-select: none;
+}
+
+:root[data-theme="light"] .npp-docmap {
+  background: #f8f9fa;
+  border-left: 1px solid #d0d0d0;
+}
+
+.npp-docmap-header {
+  height: 20px;
+  line-height: 20px;
+  padding: 0 6px;
+  background: #2d2f34;
+  color: #a0a3ad;
+  font-size: 10px;
+  font-weight: 600;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+:root[data-theme="light"] .npp-docmap-header {
+  background: #e9ecef;
+  color: #606873;
+  border-bottom: 1px solid #d0d0d0;
+}
+
+.npp-docmap-content {
+  flex: 1;
+  overflow: hidden;
+  padding: 4px;
+}
+
+.npp-docmap-pre {
+  margin: 0;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 3.5px;
+  line-height: 4.5px;
+  letter-spacing: -0.2px;
+  color: #707580;
+  white-space: pre-wrap;
+  word-break: break-all;
+  pointer-events: none;
+}
+
+:root[data-theme="light"] .npp-docmap-pre {
+  color: #999;
+}

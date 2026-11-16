@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { FileUp } from "lucide-react";
 import { Titlebar } from "./components/layout/Titlebar";
+import { ToolBar } from "./components/layout/ToolBar";
 import { TabBar } from "./components/tabs/TabBar";
-import { Sidebar } from "./components/sidebar/Sidebar";
 import { EditorPane, runEditorCommand } from "./components/editor/EditorPane";
+import { DocumentMap } from "./components/editor/DocumentMap";
 import { StatusBar } from "./components/statusbar/StatusBar";
 import { SettingsDialog } from "./components/dialogs/SettingsDialog";
 import { CommandPalette } from "./components/dialogs/CommandPalette";
@@ -19,13 +20,12 @@ import type { Command } from "./types";
 import "./themes/app.css";
 
 export default function App() {
-  const sidebar = useWorkspace((state) => state.sidebar);
-  const folder = useWorkspace((state) => state.folder);
   const theme = useWorkspace((state) => state.settings.theme);
   const closing = useWorkspace((state) => state.closing);
   const [settings, setSettings] = useState(false);
   const [palette, setPalette] = useState(false);
   const [find, setFind] = useState<"find" | "replace" | null>(null);
+  const [showDocMap, setShowDocMap] = useState(false);
   const [dragging, setDragging] = useState(false);
   const openFolder = useCallback(() => {
     native
@@ -78,7 +78,7 @@ export default function App() {
           setSettings(true);
           break;
         case "sidebar":
-          useWorkspace.setState({ sidebar: !state.sidebar });
+          setShowDocMap((prev) => !prev);
           break;
         case "wrap":
           state.setSettings({ wordWrap: !state.settings.wordWrap });
@@ -231,21 +231,19 @@ export default function App() {
   return (
     <div className="app-shell">
       <Titlebar run={run} />
+      <ToolBar run={run} />
       <div className="workspace">
-        {sidebar && <Sidebar folder={folder} openFolder={openFolder} />}
         <div className="document-area">
           <TabBar />
-          <div className="document-location">
-            <span>{folder?.name ?? "Workspace"}</span>
-            <span>/</span>
-            <ActiveName />
-          </div>
           <div id="editor-region" className="editor-region">
-            <EditorPane
-              findMode={find}
-              closeFind={() => setFind(null)}
-              run={run}
-            />
+            <div className="editor-split-container">
+              <EditorPane
+                findMode={find}
+                closeFind={() => setFind(null)}
+                run={run}
+              />
+              {showDocMap && <DocumentMap />}
+            </div>
           </div>
         </div>
       </div>
@@ -275,10 +273,4 @@ export default function App() {
       <ToastSystem />
     </div>
   );
-}
-function ActiveName() {
-  const name = useWorkspace((state) =>
-    state.active ? state.documents[state.active]?.name : undefined,
-  );
-  return <span>{name ?? "No document selected"}</span>;
 }

@@ -5,6 +5,7 @@ import type { DocumentInfo, DocumentMeta, Entry, Settings } from "../types";
 export function settingsForPlatform(mac: boolean): Settings {
   return {
     theme: "dark",
+    languageUI: "en",
     fontFamily: mac ? "Menlo" : "Consolas",
     fontSize: 13,
     tabSize: 4,
@@ -42,6 +43,8 @@ export function validateSettings(input: unknown): Settings {
   }
   if (["system", "dark", "light"].includes(String(value.theme)))
     settings.theme = value.theme as Settings["theme"];
+  if (["en", "th"].includes(String(value.languageUI)))
+    settings.languageUI = value.languageUI as Settings["languageUI"];
   if (fonts.includes(String(value.fontFamily)))
     settings.fontFamily = String(value.fontFamily);
   if (typeof value.fontSize === "number" && Number.isFinite(value.fontSize))

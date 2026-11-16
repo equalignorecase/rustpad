@@ -3,7 +3,9 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useWorkspace, fonts } from "../../stores/workspace";
 import { Modal } from "../ui/dialog";
 import { checkForUpdates, openReleasePage } from "../../services/updates";
+import { useI18n } from "../../services/i18n";
 import type { Settings, UpdateInfo } from "../../types";
+
 export function SettingsDialog({
   open,
   onClose,
@@ -13,6 +15,7 @@ export function SettingsDialog({
 }) {
   const settings = useWorkspace((state) => state.settings);
   const setSettings = useWorkspace((state) => state.setSettings);
+  const t = useI18n(settings.languageUI ?? "en");
   const [checking, setChecking] = useState(false);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [version, setVersion] = useState<string | null>(null);
@@ -33,38 +36,38 @@ export function SettingsDialog({
     setChecking(false);
   };
   const toggles: [keyof Settings, string, string][] = [
-    ["wordWrap", "Word wrap", "Keep long lines within the editor"],
-    ["lineNumbers", "Line numbers", "Show the gutter beside your text"],
+    ["wordWrap", t.wordWrap, "Keep long lines within the editor"],
+    ["lineNumbers", t.lineNumbers, "Show the gutter beside your text"],
     [
       "indentWithTabs",
-      "Indent with tabs",
+      t.indentWithTabs,
       "Use tab characters instead of spaces",
     ],
     [
       "autoIndent",
-      "Automatic indentation",
+      t.autoIndent,
       "Match indentation when starting a new line",
     ],
     [
       "bracketMatching",
-      "Bracket matching",
+      t.bracketMatching,
       "Highlight pairs and close brackets automatically",
     ],
     ["showRecent", "Recent files", "Show recently opened files in the sidebar"],
     [
       "restoreSession",
-      "Restore session",
+      t.restoreSession,
       "Reopen saved files and cursor positions; unsaved text stays in this session only",
     ],
     [
       "autoSave",
-      "Auto save",
+      t.autoSave,
       "Save existing files after 1.5 seconds idle. Conflicts stop saving. Untitled files require Save As.",
     ],
   ];
   return (
     <Modal
-      title="Settings"
+      title={t.settingsTitle}
       description="A quieter editor, configured your way. Saved on this device."
       open={open}
       onClose={onClose}
@@ -72,20 +75,32 @@ export function SettingsDialog({
     >
       <div className="settings-grid">
         <label>
-          Appearance
+          {t.uiLanguage}
+          <select
+            value={settings.languageUI ?? "en"}
+            onChange={(e) =>
+              setSettings({ languageUI: e.target.value as "en" | "th" })
+            }
+          >
+            <option value="en">English</option>
+            <option value="th">ภาษาไทย (Thai)</option>
+          </select>
+        </label>
+        <label>
+          {t.appearance}
           <select
             value={settings.theme}
             onChange={(e) =>
               setSettings({ theme: e.target.value as Settings["theme"] })
             }
           >
-            <option value="system">System</option>
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
+            <option value="system">{t.themeSystem}</option>
+            <option value="dark">{t.themeDark}</option>
+            <option value="light">{t.themeLight}</option>
           </select>
         </label>
         <label>
-          Editor font
+          {t.font}
           <select
             value={settings.fontFamily}
             onChange={(e) => setSettings({ fontFamily: e.target.value })}
@@ -96,7 +111,7 @@ export function SettingsDialog({
           </select>
         </label>
         <label>
-          Font size
+          {t.fontSize}
           <input
             type="number"
             min={10}
@@ -106,7 +121,7 @@ export function SettingsDialog({
           />
         </label>
         <label>
-          Indent size
+          {t.tabSize}
           <select
             value={settings.tabSize}
             onChange={(e) => setSettings({ tabSize: Number(e.target.value) })}
@@ -119,7 +134,7 @@ export function SettingsDialog({
           </select>
         </label>
         <label>
-          New file line endings
+          {t.lineEndings}
           <select
             value={settings.preferredEnding}
             onChange={(e) =>

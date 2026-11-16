@@ -24,6 +24,7 @@ export interface DocumentMeta extends Omit<DocumentInfo, "content"> {
 }
 export interface Settings {
   theme: "system" | "dark" | "light";
+  languageUI?: "en" | "th";
   fontFamily: string;
   fontSize: number;
   tabSize: number;
