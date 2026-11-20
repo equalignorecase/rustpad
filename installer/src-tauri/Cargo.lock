@@ -2603,7 +2603,7 @@ dependencies = [
 
 [[package]]
 name = "rustpad-setup"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "flate2",
  "serde",

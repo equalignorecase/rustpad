@@ -22,7 +22,7 @@ type Phase = "loading" | "ready" | "working" | "done" | "error";
 
 const FALLBACK_INIT: InstallerInit = {
   mode: "install",
-  version: "0.1.0",
+  version: "0.1.1",
   defaultInstallDir: "C:\\Users\\User\\AppData\\Local\\RustPad",
   existingInstallDir: null,
   installedVersion: null,
