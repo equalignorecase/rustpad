@@ -1,13 +1,18 @@
 use crate::errors::{AppError, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
+use std::io::{Read, Write};
 use std::time::Duration;
 
 const LATEST_RELEASE_API: &str =
     "https://api.github.com/repos/equalignorecase/rustpad/releases/latest";
 const RELEASE_PAGE: &str = "https://github.com/equalignorecase/rustpad/releases";
 const RELEASE_PREFIX: &str = "https://github.com/equalignorecase/rustpad/releases";
+const ASSET_PREFIX: &str = "https://github.com/equalignorecase/rustpad/releases/download/";
 const MAX_BODY: u64 = 512 * 1024;
+const MAX_CHECKSUMS_BODY: u64 = 64 * 1024;
+const MAX_INSTALLER_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +22,15 @@ pub struct UpdateInfo {
     pub update_available: bool,
     pub release_url: String,
     pub published_at: Option<String>,
+    pub installer_url: Option<String>,
+    pub checksums_url: Option<String>,
+    pub can_auto_update: bool,
+}
+
+#[derive(Deserialize)]
+struct ReleaseAsset {
+    name: Option<String>,
+    browser_download_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -24,6 +38,7 @@ struct ReleaseResponse {
     tag_name: Option<String>,
     html_url: Option<String>,
     published_at: Option<String>,
+    assets: Option<Vec<ReleaseAsset>>,
 }
 
 /// Parses a release tag like `v1.2.3`, `1.2.3` or `v1.2.3-rc.1` into its
@@ -171,13 +186,181 @@ pub fn check_latest(current_version: &str) -> Result<UpdateInfo> {
         ));
     }
     let update_available = compare_versions(&latest, current_version) == Some(Ordering::Greater);
+    let assets = release.assets.unwrap_or_default();
+    let installer_url = assets.iter().find_map(|asset| {
+        let name = asset.name.as_deref()?;
+        let url = asset.browser_download_url.as_deref()?;
+        (name.ends_with("_x64-setup.exe") && validate_asset_url(url).is_ok())
+            .then(|| url.to_string())
+    });
+    let checksums_url = assets.iter().find_map(|asset| {
+        let name = asset.name.as_deref()?;
+        let url = asset.browser_download_url.as_deref()?;
+        (name == "SHA256SUMS.txt" && validate_asset_url(url).is_ok()).then(|| url.to_string())
+    });
+    let can_auto_update =
+        cfg!(target_os = "windows") && installer_url.is_some() && checksums_url.is_some();
+
     Ok(UpdateInfo {
         current_version: current_version.to_string(),
         latest_version: latest,
         update_available,
         release_url: release_url(&tag, release.html_url),
         published_at: release.published_at,
+        installer_url,
+        checksums_url,
+        can_auto_update,
     })
+}
+
+pub fn validate_asset_url(url: &str) -> Result<()> {
+    let safe_chars = url
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | ':' | '.' | '-' | '_'));
+    if url.len() <= 400
+        && url.starts_with(ASSET_PREFIX)
+        && !url.contains("..")
+        && !url.contains('?')
+        && !url.contains('#')
+        && safe_chars
+    {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            "url",
+            "Refusing to download from an unexpected URL.",
+        ))
+    }
+}
+
+pub fn parse_sha256sums(body: &str, filename: &str) -> Option<String> {
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let mut parts = trimmed.splitn(2, char::is_whitespace);
+        let hash = parts.next()?.trim();
+        let rest = parts.next()?.trim();
+        let entry_name = rest.trim_start_matches('*').trim_start_matches("./");
+        if entry_name == filename && hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Some(hash.to_ascii_lowercase());
+        }
+    }
+    None
+}
+
+pub fn download_and_launch_installer(installer_url: &str, checksums_url: &str) -> Result<()> {
+    validate_asset_url(installer_url)?;
+    validate_asset_url(checksums_url)?;
+
+    let asset_name = installer_url
+        .rsplit('/')
+        .next()
+        .filter(|name| name.ends_with("_x64-setup.exe"))
+        .ok_or_else(|| AppError::new("url", "Unexpected installer filename."))?;
+    if !checksums_url.ends_with("/SHA256SUMS.txt") {
+        return Err(AppError::new("url", "Unexpected checksums filename."));
+    }
+
+    let config = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(120)))
+        .http_status_as_error(true)
+        .build();
+    let agent: ureq::Agent = config.into();
+
+    let mut sums_resp = agent
+        .get(checksums_url)
+        .header("User-Agent", concat!("rustpad/", env!("CARGO_PKG_VERSION")))
+        .call()
+        .map_err(|_| AppError::new("network", "Could not download release checksums."))?;
+    let sums_body = sums_resp
+        .body_mut()
+        .with_config()
+        .limit(MAX_CHECKSUMS_BODY)
+        .read_to_string()
+        .map_err(|_| AppError::new("network", "Could not read release checksums."))?;
+
+    let expected_hash = parse_sha256sums(&sums_body, asset_name).ok_or_else(|| {
+        AppError::new(
+            "verify",
+            "Installer checksum was missing from SHA256SUMS.txt.",
+        )
+    })?;
+
+    let mut exe_resp = agent
+        .get(installer_url)
+        .header("User-Agent", concat!("rustpad/", env!("CARGO_PKG_VERSION")))
+        .call()
+        .map_err(|_| AppError::new("network", "Could not download the Windows installer."))?;
+
+    let dest = std::env::temp_dir().join(format!("rustpad-update-{}.exe", std::process::id()));
+    let _ = std::fs::remove_file(&dest);
+
+    let write_res: Result<String> = (|| {
+        let mut reader = exe_resp
+            .body_mut()
+            .as_reader()
+            .take(MAX_INSTALLER_BYTES + 1);
+        let mut file = std::fs::File::create(&dest)?;
+        let mut hasher = Sha256::new();
+        let mut buf = [0_u8; 64 * 1024];
+        let mut total: u64 = 0;
+
+        loop {
+            let n = reader.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            total += n as u64;
+            if total > MAX_INSTALLER_BYTES {
+                return Err(AppError::new(
+                    "network",
+                    "Downloaded installer exceeds size limit.",
+                ));
+            }
+            let chunk = &buf[..n];
+            file.write_all(chunk)?;
+            hasher.update(chunk);
+        }
+        file.flush()?;
+        Ok(format!("{:x}", hasher.finalize()))
+    })();
+
+    let actual_hash = match write_res {
+        Ok(hash) => hash,
+        Err(err) => {
+            let _ = std::fs::remove_file(&dest);
+            return Err(err);
+        }
+    };
+
+    if !actual_hash.eq_ignore_ascii_case(&expected_hash) {
+        let _ = std::fs::remove_file(&dest);
+        return Err(AppError::new(
+            "verify",
+            "Downloaded installer checksum verification failed.",
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new(&dest)
+            .args(["--silent", "--launch"])
+            .spawn()
+            .map_err(|err| AppError::new("open", format!("Failed to start installer: {err}")))?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::fs::remove_file(&dest);
+        Err(AppError::new(
+            "platform",
+            "In-app installer updates are only supported on Windows.",
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -236,5 +419,20 @@ mod tests {
         assert!(
             validate_release_url("http://github.com/equalignorecase/rustpad/releases").is_err()
         );
+    }
+
+    #[test]
+    fn parses_sha256sums_and_validates_asset_urls() {
+        let body = "5ae11038506ac134f4443d8434beecc765f5cb0debfb33f715c89bf8e9092681  RustPad_0.1.1_x64-setup.exe\r\n";
+        assert_eq!(
+            parse_sha256sums(body, "RustPad_0.1.1_x64-setup.exe").as_deref(),
+            Some("5ae11038506ac134f4443d8434beecc765f5cb0debfb33f715c89bf8e9092681")
+        );
+        assert_eq!(parse_sha256sums(body, "other.exe"), None);
+        assert!(validate_asset_url(
+            "https://github.com/equalignorecase/rustpad/releases/download/v0.1.1/RustPad_0.1.1_x64-setup.exe"
+        )
+        .is_ok());
+        assert!(validate_asset_url("https://evil.example.com/setup.exe").is_err());
     }
 }

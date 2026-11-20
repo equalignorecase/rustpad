@@ -417,6 +417,22 @@ pub async fn open_release_page(url: String) -> Result<()> {
     updater::validate_release_url(&url)?;
     open_in_browser(&url)
 }
+#[tauri::command]
+pub async fn install_update(
+    app: AppHandle,
+    installer_url: String,
+    checksums_url: String,
+    backend: State<'_, Backend>,
+) -> Result<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        updater::download_and_launch_installer(&installer_url, &checksums_url)
+    })
+    .await
+    .map_err(|_| AppError::new("internal", "The update installer could not start."))??;
+    backend.allow_exit.store(true, Ordering::SeqCst);
+    app.exit(0);
+    Ok(())
+}
 
 fn open_in_browser(url: &str) -> Result<()> {
     let mut command = browser_command(url);

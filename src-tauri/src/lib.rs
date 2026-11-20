@@ -77,6 +77,7 @@ pub fn run() {
             commands::open_entry,
             commands::check_update,
             commands::open_release_page,
+            commands::install_update,
         ])
         .build(tauri::generate_context!())
         .expect("RustPad could not start");

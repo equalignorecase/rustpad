@@ -1,4 +1,12 @@
 export type SetupMode = "install" | "uninstall";
+export type InstallerLocale = "en" | "th";
+
+export interface SavedInstallOptions {
+  startMenuShortcut: boolean;
+  desktopShortcut: boolean;
+  contextMenu: boolean;
+  fileAssociations: boolean;
+}
 
 export interface InstallerInit {
   mode: SetupMode;
@@ -6,6 +14,7 @@ export interface InstallerInit {
   defaultInstallDir: string;
   existingInstallDir: string | null;
   installedVersion: string | null;
+  savedOptions: SavedInstallOptions;
   estimatedSizeMb: number;
   platformSupported: boolean;
 }

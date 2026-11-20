@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { useWorkspace, fonts } from "../../stores/workspace";
 import { Modal } from "../ui/dialog";
-import { checkForUpdates, openReleasePage } from "../../services/updates";
+import { checkForUpdates, installUpdate, openReleasePage } from "../../services/updates";
 import { useI18n } from "../../services/i18n";
 import type { Settings, UpdateInfo } from "../../types";
 
@@ -17,6 +17,7 @@ export function SettingsDialog({
   const setSettings = useWorkspace((state) => state.setSettings);
   const t = useI18n(settings.languageUI ?? "en");
   const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   useEffect(() => {
@@ -188,12 +189,25 @@ export function SettingsDialog({
           >
             {checking ? "Checking…" : "Check for updates"}
           </button>
-          {update?.updateAvailable && (
+          {update?.updateAvailable && update.canAutoUpdate && (
             <button
               className="button small primary"
+              disabled={installing}
+              onClick={async () => {
+                setInstalling(true);
+                await installUpdate(update);
+                setInstalling(false);
+              }}
+            >
+              {installing ? "Updating…" : `Update to v${update.latestVersion}`}
+            </button>
+          )}
+          {update?.updateAvailable && (
+            <button
+              className={update.canAutoUpdate ? "button small" : "button small primary"}
               onClick={() => void openReleasePage(update)}
             >
-              Download v{update.latestVersion}
+              {update.canAutoUpdate ? "Release page" : `Download v${update.latestVersion}`}
             </button>
           )}
         </div>

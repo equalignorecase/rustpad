@@ -60,6 +60,9 @@ export interface UpdateInfo {
   updateAvailable: boolean;
   releaseUrl: string;
   publishedAt: string | null;
+  installerUrl?: string | null;
+  checksumsUrl?: string | null;
+  canAutoUpdate?: boolean;
 }
 export interface Entry {
   id: string;

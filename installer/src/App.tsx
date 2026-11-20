@@ -8,6 +8,7 @@ import {
   Check,
   ChevronDown,
   FolderOpen,
+  Globe,
   Loader2,
   Minus,
   RotateCcw,
@@ -16,7 +17,13 @@ import {
   X,
 } from "lucide-react";
 import rustpadIcon from "./assets/icon.svg";
-import type { InstallOptions, InstallProgress, InstallerInit } from "./types";
+import { detectInstallerLocale, INSTALLER_COPY } from "./i18n";
+import type {
+  InstallOptions,
+  InstallProgress,
+  InstallerInit,
+  InstallerLocale,
+} from "./types";
 
 type Phase = "loading" | "ready" | "working" | "done" | "error";
 
@@ -26,28 +33,22 @@ const FALLBACK_INIT: InstallerInit = {
   defaultInstallDir: "C:\\Users\\User\\AppData\\Local\\RustPad",
   existingInstallDir: null,
   installedVersion: null,
+  savedOptions: {
+    startMenuShortcut: true,
+    desktopShortcut: true,
+    contextMenu: true,
+    fileAssociations: true,
+  },
   estimatedSizeMb: 18,
   platformSupported: true,
 };
-
-const INSTALL_STEPS: ReadonlyArray<{ id: InstallProgress["stage"]; label: string }> = [
-  { id: "prepare", label: "Prepare install folder" },
-  { id: "extract", label: "Extract RustPad executable" },
-  { id: "shortcuts", label: "Create Start Menu & Desktop shortcuts" },
-  { id: "registry", label: "Register Explorer & file associations" },
-];
-
-const UNINSTALL_STEPS: ReadonlyArray<{ id: InstallProgress["stage"]; label: string }> = [
-  { id: "prepare", label: "Close running RustPad instances" },
-  { id: "cleanup", label: "Remove shortcuts & program files" },
-  { id: "registry", label: "Clean Windows registry & associations" },
-];
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 export default function App() {
+  const [locale, setLocale] = useState<InstallerLocale>(() => detectInstallerLocale());
   const [init, setInit] = useState<InstallerInit | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [customizing, setCustomizing] = useState(false);
@@ -60,11 +61,13 @@ export default function App() {
   });
   const [progress, setProgress] = useState<InstallProgress>({
     stage: "prepare",
-    message: "Preparing...",
+    message: INSTALLER_COPY.en.preparingMessage,
     percent: 0,
   });
   const [completedStages, setCompletedStages] = useState<Set<string>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string>("");
+
+  const copy = INSTALLER_COPY[locale];
 
   useEffect(() => {
     let active = true;
@@ -72,7 +75,10 @@ export default function App() {
       if (!isTauriRuntime()) {
         if (!active) return;
         setInit(FALLBACK_INIT);
-        setOptions((prev) => ({ ...prev, installDir: FALLBACK_INIT.defaultInstallDir }));
+        setOptions({
+          installDir: FALLBACK_INIT.defaultInstallDir,
+          ...FALLBACK_INIT.savedOptions,
+        });
         setPhase("ready");
         return;
       }
@@ -81,10 +87,13 @@ export default function App() {
         const state = await invoke<InstallerInit>("get_installer_state");
         if (!active) return;
         setInit(state);
-        setOptions((prev) => ({
-          ...prev,
+        setOptions({
           installDir: state.existingInstallDir ?? state.defaultInstallDir,
-        }));
+          startMenuShortcut: state.savedOptions?.startMenuShortcut ?? true,
+          desktopShortcut: state.savedOptions?.desktopShortcut ?? true,
+          contextMenu: state.savedOptions?.contextMenu ?? true,
+          fileAssociations: state.savedOptions?.fileAssociations ?? true,
+        });
         setPhase("ready");
       } catch (err) {
         if (!active) return;
@@ -121,8 +130,8 @@ export default function App() {
         }
         if (next.stage === "cleanup") updated.add("prepare");
         if (next.stage === "done") {
-          for (const step of [...INSTALL_STEPS, ...UNINSTALL_STEPS]) {
-            updated.add(step.id);
+          for (const stage of ["prepare", "extract", "shortcuts", "cleanup", "registry"]) {
+            updated.add(stage);
           }
         }
         return updated;
@@ -143,8 +152,8 @@ export default function App() {
 
   const isUninstall = init?.mode === "uninstall";
   const steps = useMemo(
-    () => (isUninstall ? UNINSTALL_STEPS : INSTALL_STEPS),
-    [isUninstall],
+    () => (isUninstall ? copy.uninstallSteps : copy.installSteps),
+    [copy, isUninstall],
   );
 
   async function handleMinimize() {
@@ -175,7 +184,7 @@ export default function App() {
   async function handleInstall() {
     setCompletedStages(new Set());
     setErrorMessage("");
-    setProgress({ stage: "prepare", message: "Preparing install folder...", percent: 8 });
+    setProgress({ stage: "prepare", message: copy.preparingMessage, percent: 8 });
     setPhase("working");
     try {
       await invoke("run_install", { options });
@@ -190,7 +199,7 @@ export default function App() {
     if (!init) return;
     setCompletedStages(new Set());
     setErrorMessage("");
-    setProgress({ stage: "prepare", message: "Closing RustPad if open...", percent: 10 });
+    setProgress({ stage: "prepare", message: copy.closingMessage, percent: 10 });
     setPhase("working");
     try {
       await invoke("run_uninstall", {
@@ -221,6 +230,10 @@ export default function App() {
     setOptions((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
+  function toggleLocale() {
+    setLocale((prev) => (prev === "en" ? "th" : "en"));
+  }
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--canvas)] text-[var(--text)]">
       {/* Custom Frameless Titlebar */}
@@ -233,13 +246,22 @@ export default function App() {
           className="flex items-center gap-2 text-xs font-medium text-[var(--muted)]"
         >
           <img src={rustpadIcon} alt="" className="h-4 w-4 rounded-sm" draggable={false} />
-          <span>{isUninstall ? "RustPad Uninstaller" : "RustPad Setup"}</span>
+          <span>{isUninstall ? copy.titlebarUninstall : copy.titlebarInstall}</span>
         </div>
 
         <div className="flex items-center gap-1">
           <button
             type="button"
-            aria-label="Minimize"
+            aria-label={copy.switchLangLabel}
+            onClick={toggleLocale}
+            className="mr-1 flex h-6 items-center gap-1 rounded border border-[var(--border)] bg-[var(--panel)] px-2 text-[11px] font-medium text-[var(--muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]"
+          >
+            <Globe className="h-3 w-3" />
+            <span>{locale === "en" ? "TH" : "EN"}</span>
+          </button>
+          <button
+            type="button"
+            aria-label={copy.minimizeLabel}
             onClick={handleMinimize}
             className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]"
           >
@@ -247,7 +269,7 @@ export default function App() {
           </button>
           <button
             type="button"
-            aria-label="Close"
+            aria-label={copy.closeLabel}
             disabled={phase === "working"}
             onClick={handleClose}
             className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[#3a2628] hover:text-[var(--danger)]"
@@ -273,21 +295,19 @@ export default function App() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="m-0 text-lg font-semibold tracking-tight text-[var(--text)]">
-                    {isUninstall ? "Uninstall RustPad" : "RustPad"}
+                    {isUninstall ? copy.uninstallHeroTitle : copy.installHeroTitle}
                   </h1>
                   <span className="rounded-full border border-[var(--border)] bg-[var(--panel)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted)]">
                     v{init.version} · x64
                   </span>
                   {!isUninstall && init.installedVersion && (
                     <span className="rounded-full bg-[#2a3830] px-2 py-0.5 text-[11px] font-medium text-[var(--accent)]">
-                      Updating v{init.installedVersion}
+                      {copy.updatingBadge(init.installedVersion)}
                     </span>
                   )}
                 </div>
                 <p className="mt-1 mb-0 text-xs text-[var(--muted)]">
-                  {isUninstall
-                    ? "Remove RustPad, shortcuts, and Windows integration from your account."
-                    : "Fast, native dark-mode text & code editor built with Rust."}
+                  {isUninstall ? copy.uninstallSubtitle : copy.installSubtitle}
                 </p>
               </div>
             </section>
@@ -295,12 +315,11 @@ export default function App() {
             {/* Body by Mode & Phase */}
             {phase === "ready" && !isUninstall && (
               <section className="animate-enter my-3 flex flex-col gap-3">
-                {/* Summary Strip */}
                 <div className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-3.5">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--subtle)]">
-                        Install destination
+                        {copy.installDestination}
                       </div>
                       <div
                         className="mt-0.5 truncate font-mono text-xs text-[var(--text)] select-text"
@@ -316,7 +335,7 @@ export default function App() {
                       className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--hover)]"
                     >
                       <SlidersHorizontal className="h-3.5 w-3.5 text-[var(--accent)]" />
-                      <span>Customize</span>
+                      <span>{copy.customize}</span>
                       <ChevronDown
                         className={`h-3.5 w-3.5 text-[var(--muted)] transition-transform duration-200 ${
                           customizing ? "rotate-180" : ""
@@ -327,11 +346,11 @@ export default function App() {
 
                   {!customizing && (
                     <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--border)] pt-2.5 text-[11px] text-[var(--muted)]">
-                      <span>~{init.estimatedSizeMb} MB space</span>
+                      <span>{copy.spaceNote(init.estimatedSizeMb)}</span>
                       <span>·</span>
-                      <span>Current user (no UAC)</span>
+                      <span>{copy.perUserTag}</span>
                       <span>·</span>
-                      <span>Shortcuts &amp; Explorer menu</span>
+                      <span>{copy.shortcutsNote}</span>
                     </div>
                   )}
 
@@ -342,7 +361,7 @@ export default function App() {
                           htmlFor="install-dir-input"
                           className="mb-1 block text-[11px] font-medium text-[var(--muted)]"
                         >
-                          Folder path
+                          {copy.folderPath}
                         </label>
                         <div className="flex gap-2">
                           <input
@@ -360,7 +379,7 @@ export default function App() {
                             className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] hover:bg-[var(--hover)]"
                           >
                             <FolderOpen className="h-3.5 w-3.5 text-[var(--muted)]" />
-                            <span>Browse</span>
+                            <span>{copy.browse}</span>
                           </button>
                         </div>
                       </div>
@@ -368,22 +387,22 @@ export default function App() {
                       <div className="grid grid-cols-2 gap-2">
                         <OptionCheck
                           checked={options.startMenuShortcut}
-                          label="Start Menu shortcut"
+                          label={copy.startMenuShortcut}
                           onClick={() => toggleOption("startMenuShortcut")}
                         />
                         <OptionCheck
                           checked={options.desktopShortcut}
-                          label="Desktop shortcut"
+                          label={copy.desktopShortcut}
                           onClick={() => toggleOption("desktopShortcut")}
                         />
                         <OptionCheck
                           checked={options.contextMenu}
-                          label="Open with RustPad menu"
+                          label={copy.contextMenuOption}
                           onClick={() => toggleOption("contextMenu")}
                         />
                         <OptionCheck
                           checked={options.fileAssociations}
-                          label="Associate 18 file types"
+                          label={copy.fileAssocOption}
                           onClick={() => toggleOption("fileAssociations")}
                         />
                       </div>
@@ -396,15 +415,15 @@ export default function App() {
             {phase === "ready" && isUninstall && (
               <section className="animate-enter my-4 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-4">
                 <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--subtle)]">
-                  Installation directory
+                  {copy.uninstallDirLabel}
                 </div>
                 <div className="mt-1 truncate font-mono text-xs text-[var(--text)] select-text">
                   {init.existingInstallDir ?? options.installDir}
                 </div>
                 <ul className="mt-3 mb-0 flex flex-col gap-1.5 pl-4 text-xs text-[var(--muted)]">
-                  <li>Remove RustPad application files</li>
-                  <li>Delete Start Menu &amp; Desktop shortcuts</li>
-                  <li>Remove Explorer context menu &amp; file associations</li>
+                  {copy.uninstallBullets.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
                 </ul>
               </section>
             )}
@@ -412,7 +431,9 @@ export default function App() {
             {phase === "working" && (
               <section className="animate-enter my-4 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-4">
                 <div className="flex items-center justify-between text-xs font-medium">
-                  <span className="text-[var(--text)]">{progress.message}</span>
+                  <span className="text-[var(--text)]">
+                    {copy.stepLabels[progress.stage] ?? progress.message}
+                  </span>
                   <span className="font-mono text-[var(--accent)]">{progress.percent}%</span>
                 </div>
 
@@ -462,12 +483,10 @@ export default function App() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <h2 className="m-0 text-sm font-semibold text-[var(--text)]">
-                      {isUninstall ? "RustPad has been removed" : "RustPad is ready"}
+                      {isUninstall ? copy.doneUninstallTitle : copy.doneInstallTitle}
                     </h2>
                     <p className="mt-1 mb-0 text-xs text-[var(--muted)]">
-                      {isUninstall
-                        ? "Shortcuts, registry keys, and application files were cleaned up."
-                        : "Installed and registered for your Windows account."}
+                      {isUninstall ? copy.doneUninstallDesc : copy.doneInstallDesc}
                     </p>
                     {!isUninstall && (
                       <div className="mt-2 truncate rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 font-mono text-[11px] text-[var(--muted)] select-text">
@@ -485,7 +504,7 @@ export default function App() {
                   <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--danger)]" />
                   <div className="min-w-0 flex-1">
                     <h2 className="m-0 text-sm font-semibold text-[var(--danger)]">
-                      {isUninstall ? "Uninstall failed" : "Installation failed"}
+                      {isUninstall ? copy.errorUninstallTitle : copy.errorInstallTitle}
                     </h2>
                     <p className="mt-1 mb-0 break-words text-xs text-[var(--text)] select-text">
                       {errorMessage}
@@ -499,16 +518,16 @@ export default function App() {
             <footer className="flex items-center justify-between gap-3 pt-1">
               {phase === "ready" && !isUninstall && (
                 <>
-                  <span className="text-[11px] text-[var(--subtle)]">
-                    Per-user install · MIT License
-                  </span>
+                  <span className="text-[11px] text-[var(--subtle)]">{copy.footerLicense}</span>
                   <button
                     type="button"
                     disabled={!options.installDir.trim()}
                     onClick={handleInstall}
                     className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-5 py-2.5 text-xs font-semibold text-[var(--accent-text)] transition-colors hover:bg-[var(--accent-hover)]"
                   >
-                    <span>{init.installedVersion ? "Update RustPad" : "Install RustPad"}</span>
+                    <span>
+                      {init.installedVersion ? copy.updateButton : copy.installButton}
+                    </span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 </>
@@ -521,7 +540,7 @@ export default function App() {
                     onClick={handleClose}
                     className="rounded-lg border border-[var(--border)] bg-[var(--panel)] px-4 py-2 text-xs font-medium text-[var(--text)] hover:bg-[var(--hover)]"
                   >
-                    Cancel
+                    {copy.cancelButton}
                   </button>
                   <button
                     type="button"
@@ -529,15 +548,15 @@ export default function App() {
                     className="flex items-center gap-2 rounded-lg bg-[var(--danger)] px-5 py-2.5 text-xs font-semibold text-[var(--danger-text)] transition-colors hover:bg-[var(--danger-hover)]"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    <span>Uninstall RustPad</span>
+                    <span>{copy.uninstallButton}</span>
                   </button>
                 </>
               )}
 
               {phase === "working" && (
                 <div className="flex w-full items-center justify-between text-[11px] text-[var(--subtle)]">
-                  <span>Please keep this window open...</span>
-                  <span>{isUninstall ? "Removing..." : "Installing..."}</span>
+                  <span>{copy.keepWindowOpen}</span>
+                  <span>{isUninstall ? copy.removingStatus : copy.installingStatus}</span>
                 </div>
               )}
 
@@ -548,14 +567,14 @@ export default function App() {
                     onClick={handleClose}
                     className="rounded-lg border border-[var(--border)] bg-[var(--panel)] px-4 py-2 text-xs font-medium text-[var(--text)] hover:bg-[var(--hover)]"
                   >
-                    Close
+                    {copy.closeButton}
                   </button>
                   <button
                     type="button"
                     onClick={handleLaunch}
                     className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-5 py-2.5 text-xs font-semibold text-[var(--accent-text)] transition-colors hover:bg-[var(--accent-hover)]"
                   >
-                    <span>Launch RustPad</span>
+                    <span>{copy.launchButton}</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 </>
@@ -568,7 +587,7 @@ export default function App() {
                     onClick={handleFinishUninstall}
                     className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-xs font-semibold text-[var(--accent-text)] transition-colors hover:bg-[var(--accent-hover)]"
                   >
-                    Finish
+                    {copy.finishButton}
                   </button>
                 </div>
               )}
@@ -580,7 +599,7 @@ export default function App() {
                     onClick={() => setPhase("ready")}
                     className="rounded-lg border border-[var(--border)] bg-[var(--panel)] px-4 py-2 text-xs font-medium text-[var(--text)] hover:bg-[var(--hover)]"
                   >
-                    Back
+                    {copy.backButton}
                   </button>
                   <button
                     type="button"
@@ -588,7 +607,7 @@ export default function App() {
                     className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-5 py-2.5 text-xs font-semibold text-[var(--accent-text)] transition-colors hover:bg-[var(--accent-hover)]"
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
-                    <span>Try Again</span>
+                    <span>{copy.retryButton}</span>
                   </button>
                 </>
               )}
@@ -610,6 +629,7 @@ function OptionCheck({ checked, label, onClick }: OptionCheckProps) {
   return (
     <button
       type="button"
+      aria-pressed={checked}
       onClick={onClick}
       className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition-colors ${
         checked

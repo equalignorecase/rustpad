@@ -16,6 +16,33 @@ pub const FILE_ASSOCIATIONS: &[&str] = &[
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SavedInstallOptions {
+    pub start_menu_shortcut: bool,
+    pub desktop_shortcut: bool,
+    pub context_menu: bool,
+    pub file_associations: bool,
+}
+
+impl Default for SavedInstallOptions {
+    fn default() -> Self {
+        Self {
+            start_menu_shortcut: true,
+            desktop_shortcut: true,
+            context_menu: true,
+            file_associations: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExistingInstall {
+    pub install_dir: PathBuf,
+    pub version: Option<String>,
+    pub options: SavedInstallOptions,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstallOptions {
     pub install_dir: String,
     pub start_menu_shortcut: bool,
@@ -70,7 +97,14 @@ pub fn default_install_dir() -> PathBuf {
 }
 
 #[cfg(windows)]
-pub fn existing_installation() -> Option<(PathBuf, Option<String>)> {
+fn read_reg_bool(key: &winreg::RegKey, name: &str, default: bool) -> bool {
+    key.get_value::<u32, _>(name)
+        .map(|val| val != 0)
+        .unwrap_or(default)
+}
+
+#[cfg(windows)]
+pub fn existing_installation() -> Option<ExistingInstall> {
     use winreg::{RegKey, enums::HKEY_CURRENT_USER};
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
@@ -79,7 +113,17 @@ pub fn existing_installation() -> Option<(PathBuf, Option<String>)> {
         && !dir.trim().is_empty()
     {
         let ver = key.get_value::<String, _>("Version").ok();
-        return Some((PathBuf::from(dir), ver));
+        let options = SavedInstallOptions {
+            start_menu_shortcut: read_reg_bool(&key, "StartMenuShortcut", true),
+            desktop_shortcut: read_reg_bool(&key, "DesktopShortcut", true),
+            context_menu: read_reg_bool(&key, "ContextMenu", true),
+            file_associations: read_reg_bool(&key, "FileAssociations", true),
+        };
+        return Some(ExistingInstall {
+            install_dir: PathBuf::from(dir),
+            version: ver,
+            options,
+        });
     }
 
     if let Ok(key) =
@@ -88,14 +132,18 @@ pub fn existing_installation() -> Option<(PathBuf, Option<String>)> {
         && !dir.trim().is_empty()
     {
         let ver = key.get_value::<String, _>("DisplayVersion").ok();
-        return Some((PathBuf::from(dir), ver));
+        return Some(ExistingInstall {
+            install_dir: PathBuf::from(dir),
+            version: ver,
+            options: SavedInstallOptions::default(),
+        });
     }
 
     None
 }
 
 #[cfg(not(windows))]
-pub fn existing_installation() -> Option<(PathBuf, Option<String>)> {
+pub fn existing_installation() -> Option<ExistingInstall> {
     None
 }
 
@@ -270,7 +318,7 @@ fn stop_running_rustpad() {
         .creation_flags(CREATE_NO_WINDOW)
         .status();
 
-    for _ in 0..8 {
+    for _ in 0..20 {
         let running = Command::new("tasklist.exe")
             .args(["/FI", "IMAGENAME eq rustpad.exe", "/NH"])
             .creation_flags(CREATE_NO_WINDOW)

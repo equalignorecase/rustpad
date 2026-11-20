@@ -68,6 +68,8 @@ export const native = {
   chooseFolder: () => call<Entry | null>("choose_folder"),
   checkUpdate: () => call<UpdateInfo>("check_update"),
   openReleasePage: (url: string) => call<void>("open_release_page", { url }),
+  installUpdate: (installerUrl: string, checksumsUrl: string) =>
+    call<void>("install_update", { installerUrl, checksumsUrl }),
   listFolder: (id: string) =>
     call<{ entries: Entry[]; truncated: boolean }>("list_folder", { id }),
   openEntry: (id: string) => call<OpenBatch>("open_entry", { id }),

@@ -8,7 +8,7 @@ use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
-use windows_install::InstallOptions;
+use windows_install::{InstallOptions, SavedInstallOptions};
 
 struct SetupModeState {
     uninstall: bool,
@@ -23,17 +23,30 @@ struct InstallerInit {
     default_install_dir: String,
     existing_install_dir: Option<String>,
     installed_version: Option<String>,
+    saved_options: SavedInstallOptions,
     estimated_size_mb: u64,
     platform_supported: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CliFlags {
+    uninstall: bool,
+    silent: bool,
+    launch: bool,
+    install_dir: Option<String>,
 }
 
 #[tauri::command]
 fn get_installer_state(state: State<'_, SetupModeState>) -> InstallerInit {
     let default_dir = windows_install::default_install_dir();
     let existing = windows_install::existing_installation();
-    let (existing_dir, installed_ver) = match existing {
-        Some((dir, ver)) => (Some(dir.to_string_lossy().to_string()), ver),
-        None => (None, None),
+    let (existing_dir, installed_ver, saved_options) = match existing {
+        Some(found) => (
+            Some(found.install_dir.to_string_lossy().to_string()),
+            found.version,
+            found.options,
+        ),
+        None => (None, None, SavedInstallOptions::default()),
     };
 
     InstallerInit {
@@ -46,6 +59,7 @@ fn get_installer_state(state: State<'_, SetupModeState>) -> InstallerInit {
         default_install_dir: default_dir.to_string_lossy().to_string(),
         existing_install_dir: existing_dir,
         installed_version: installed_ver,
+        saved_options,
         estimated_size_mb: payload::estimated_size_mb(),
         platform_supported: cfg!(windows),
     }
@@ -153,25 +167,97 @@ fn finish_uninstall(app: AppHandle, install_dir: String) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_cli_flags(args: &[String]) -> (bool, bool) {
-    let uninstall = args.iter().any(|a| a.eq_ignore_ascii_case("--uninstall"));
-    let quiet = args.iter().any(|a| a.eq_ignore_ascii_case("--quiet"));
-    (uninstall, quiet)
+fn parse_cli_flags(args: &[String]) -> CliFlags {
+    let mut uninstall = false;
+    let mut silent = false;
+    let mut launch = false;
+    let mut install_dir = None;
+
+    let mut iter = args.iter().skip(1);
+    while let Some(arg) = iter.next() {
+        if arg.eq_ignore_ascii_case("--uninstall") || arg.eq_ignore_ascii_case("/uninstall") {
+            uninstall = true;
+        } else if arg.eq_ignore_ascii_case("--quiet")
+            || arg.eq_ignore_ascii_case("--silent")
+            || arg.eq_ignore_ascii_case("/S")
+        {
+            silent = true;
+        } else if arg.eq_ignore_ascii_case("--launch") {
+            launch = true;
+        } else if let Some(val) = arg
+            .strip_prefix("--dir=")
+            .or_else(|| arg.strip_prefix("/D="))
+        {
+            if !val.trim().is_empty() {
+                install_dir = Some(val.trim().trim_matches('"').to_string());
+            }
+        } else if arg.eq_ignore_ascii_case("--dir")
+            && let Some(next) = iter.next()
+            && !next.trim().is_empty()
+        {
+            install_dir = Some(next.trim().trim_matches('"').to_string());
+        }
+    }
+
+    CliFlags {
+        uninstall,
+        silent,
+        launch,
+        install_dir,
+    }
+}
+
+fn run_silent_install(flags: &CliFlags) -> Result<(), String> {
+    webview2::ensure_webview2_runtime()?;
+    let existing = windows_install::existing_installation();
+    let (target_dir, saved) = match existing {
+        Some(found) => (found.install_dir, found.options),
+        None => (
+            windows_install::default_install_dir(),
+            SavedInstallOptions::default(),
+        ),
+    };
+    let resolved_dir = flags
+        .install_dir
+        .clone()
+        .unwrap_or_else(|| target_dir.to_string_lossy().to_string());
+
+    let options = InstallOptions {
+        install_dir: resolved_dir,
+        start_menu_shortcut: saved.start_menu_shortcut,
+        desktop_shortcut: saved.desktop_shortcut,
+        context_menu: saved.context_menu,
+        file_associations: saved.file_associations,
+    };
+
+    let installed_dir = windows_install::perform_install(None, &options)?;
+    if flags.launch {
+        windows_install::launch_installed_app(&installed_dir)?;
+    }
+    Ok(())
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let (uninstall, quiet) = parse_cli_flags(&args);
+    let flags = parse_cli_flags(&args);
 
-    if uninstall && quiet {
-        let dir = windows_install::existing_installation()
-            .map(|(d, _)| d)
-            .unwrap_or_else(windows_install::default_install_dir);
-        if windows_install::perform_uninstall(None, &dir).is_ok() {
-            windows_install::spawn_self_cleanup(&dir);
-            return;
+    if flags.silent {
+        if flags.uninstall {
+            let dir = windows_install::existing_installation()
+                .map(|found| found.install_dir)
+                .unwrap_or_else(windows_install::default_install_dir);
+            if windows_install::perform_uninstall(None, &dir).is_ok() {
+                windows_install::spawn_self_cleanup(&dir);
+                return;
+            }
+            std::process::exit(1);
         }
-        std::process::exit(1);
+
+        if let Err(err) = run_silent_install(&flags) {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
+        return;
     }
 
     if let Err(err) = webview2::ensure_webview2_runtime() {
@@ -179,6 +265,7 @@ fn main() {
         std::process::exit(1);
     }
 
+    let uninstall = flags.uninstall;
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(SetupModeState {
@@ -205,14 +292,18 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_cli_flags;
+    use super::{CliFlags, parse_cli_flags};
 
     #[test]
-    fn cli_flags_detect_uninstall_and_quiet() {
-        assert_eq!(parse_cli_flags(&["setup.exe".into()]), (false, false));
+    fn cli_flags_detect_uninstall_silent_launch_and_dir() {
         assert_eq!(
-            parse_cli_flags(&["uninstall.exe".into(), "--uninstall".into()]),
-            (true, false)
+            parse_cli_flags(&["setup.exe".into()]),
+            CliFlags {
+                uninstall: false,
+                silent: false,
+                launch: false,
+                install_dir: None,
+            }
         );
         assert_eq!(
             parse_cli_flags(&[
@@ -220,7 +311,40 @@ mod tests {
                 "--UNINSTALL".into(),
                 "--quiet".into()
             ]),
-            (true, true)
+            CliFlags {
+                uninstall: true,
+                silent: true,
+                launch: false,
+                install_dir: None,
+            }
+        );
+        assert_eq!(
+            parse_cli_flags(&[
+                "setup.exe".into(),
+                "/S".into(),
+                "--launch".into(),
+                r#"--dir="C:\Apps\RustPad""#.into(),
+            ]),
+            CliFlags {
+                uninstall: false,
+                silent: true,
+                launch: true,
+                install_dir: Some(r"C:\Apps\RustPad".to_string()),
+            }
+        );
+        assert_eq!(
+            parse_cli_flags(&[
+                "setup.exe".into(),
+                "--silent".into(),
+                "--dir".into(),
+                r"D:\Tools\RustPad".into(),
+            ]),
+            CliFlags {
+                uninstall: false,
+                silent: true,
+                launch: false,
+                install_dir: Some(r"D:\Tools\RustPad".to_string()),
+            }
         );
     }
 }
