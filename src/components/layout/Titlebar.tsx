@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import appIcon from "../../assets/icon.png";
 import { useWorkspace } from "../../stores/workspace";
 import { MenuBar } from "./MenuBar";
 import type { Command as Action } from "../../types";
@@ -33,7 +34,12 @@ export function Titlebar({ run }: { run: (command: Action) => void }) {
         onDoubleClick={handleTitleDoubleClick}
       >
         <div className="npp-title-bar-text" data-tauri-drag-region>
-          <span className="npp-app-icon">📝</span>
+          <img
+            src={appIcon}
+            alt=""
+            className="npp-app-icon h-4 w-4 rounded-sm object-cover"
+            draggable={false}
+          />
           <span>{displayTitle}</span>
         </div>
       </div>
