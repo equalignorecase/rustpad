@@ -16,7 +16,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import rustpadIcon from "./assets/icon.svg";
+import rustpadIcon from "./assets/icon.png";
 import { detectInstallerLocale, INSTALLER_COPY } from "./i18n";
 import type {
   InstallOptions,
