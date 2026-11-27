@@ -1,5 +1,6 @@
 import {
   Compartment,
+  EditorSelection,
   EditorState,
   type Extension,
   type Text,
@@ -90,6 +91,26 @@ export class EditorSession {
     session.savedEncoding = info.encoding ?? snapshot.encoding;
     session.encoding = session.savedEncoding;
     if (session.ending === snapshot.ending) session.ending = "Preserve";
+    this.onChange(id);
+  }
+  applyDraft(
+    id: string,
+    draftContent: string,
+    cursor: number,
+    scroll: number,
+    bom?: boolean,
+    encoding?: Encoding,
+  ) {
+    const session = this.get(id);
+    const normalized = draftContent.replace(/\r\n?/g, "\n");
+    const head = Math.min(Math.max(0, cursor), normalized.length);
+    session.state = session.state.update({
+      changes: { from: 0, to: session.state.doc.length, insert: normalized },
+      selection: EditorSelection.cursor(head),
+    }).state;
+    session.scroll = Number.isFinite(scroll) ? Math.max(0, scroll) : 0;
+    if (bom !== undefined) session.bom = bom;
+    if (encoding !== undefined) session.encoding = encoding;
     this.onChange(id);
   }
   remove(id: string) {

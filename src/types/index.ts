@@ -35,8 +35,20 @@ export interface Settings {
   bracketMatching: boolean;
   showRecent: boolean;
   restoreSession: boolean;
+  crashRecovery: boolean;
   autoSave: boolean;
   preferredEnding: "LF" | "CRLF";
+}
+export interface RecoveredBackup {
+  backupKey: string;
+  document: DocumentInfo;
+  draftContent: string;
+  draftLineEnding: DocumentInfo["lineEnding"];
+  draftBom: boolean;
+  draftEncoding: Encoding;
+  cursor: number;
+  scroll: number;
+  diskChanged: boolean;
 }
 export interface Config {
   version: number;

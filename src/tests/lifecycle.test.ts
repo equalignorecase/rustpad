@@ -61,8 +61,9 @@ it("cancelled Save As keeps dirty tab open", async () => {
   expect(editor.isDirty("one")).toBe(true);
   expect(editor.snapshot("one").content).toBe("unsaved ภาษาไทย👋");
 });
-it("cancelled quit retains all tabs and never exits", async () => {
+it("cancelled quit retains all tabs and never exits when crashRecovery is off", async () => {
   const { controller, api } = setup();
+  useWorkspace.getState().setSettings({ crashRecovery: false });
   controller.add({ ...info, id: "two" });
   const closing = controller.quit();
   await vi.waitFor(() =>
@@ -276,4 +277,90 @@ it("keeps modified Untitled tab when dropping or opening files", async () => {
   expect(useWorkspace.getState().documents["doc-dropped"].encoding).toBe(
     "Windows-874",
   );
+});
+
+it("debounces crash-recovery backup for unsaved edits and flushes on hot-exit quit", async () => {
+  vi.useFakeTimers();
+  try {
+    const saveBackup = vi.fn<Native["saveBackup"]>(async () => {});
+    const removeBackup = vi.fn<Native["removeBackup"]>(async () => {});
+    const { controller, editor, api } = setup({ saveBackup, removeBackup });
+
+    editor.update(
+      "one",
+      editor
+        .get("one")
+        .state.update({
+          changes: {
+            from: 0,
+            to: editor.get("one").state.doc.length,
+            insert: "กำลังพิมพ์ก่อนคอมดับ",
+          },
+        })
+        .state,
+    );
+    expect(saveBackup).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(saveBackup).toHaveBeenCalledTimes(1);
+    expect(saveBackup.mock.calls[0][2]).toBe("กำลังพิมพ์ก่อนคอมดับ");
+
+    await controller.quit();
+    expect(useFeedback.getState().question).toBeNull();
+    expect(api.exit).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("restores unsaved crash-recovery backups on launch with dirty state and cursor", async () => {
+  const saveBackup = vi.fn(async () => {});
+  const removeBackup = vi.fn(async () => {});
+  const editor = new EditorSession();
+  const api = {
+    config: async () => ({
+      version: 1,
+      settings: { crashRecovery: true, restoreSession: true },
+      tabs: [],
+      recent: [],
+      active: null,
+    }),
+    restore: async () => ({ documents: [], errors: [] }),
+    restoreBackups: async () => [
+      {
+        backupKey: "old-doc-1",
+        document: {
+          id: "document-1",
+          name: "Untitled 1",
+          path: null,
+          content: "",
+          fingerprint: "",
+          lineEnding: "LF" as const,
+          bom: false,
+          encoding: "UTF-8" as const,
+        },
+        draftContent: "recovered after power loss",
+        draftLineEnding: "LF" as const,
+        draftBom: false,
+        draftEncoding: "UTF-8" as const,
+        cursor: 9,
+        scroll: 40,
+        diskChanged: false,
+      },
+    ],
+    pending: async () => ({ documents: [], errors: [] }),
+    saveBackup,
+    removeBackup,
+  } as unknown as Native;
+
+  const controller = new DocumentController(api, editor);
+  await controller.initialize();
+
+  expect(useWorkspace.getState().order).toEqual(["document-1"]);
+  expect(useWorkspace.getState().documents["document-1"].dirty).toBe(true);
+  expect(editor.snapshot("document-1").content).toBe(
+    "recovered after power loss",
+  );
+  expect(editor.get("document-1").state.selection.main.head).toBe(9);
+  expect(removeBackup).toHaveBeenCalledWith("old-doc-1");
+  expect(saveBackup).toHaveBeenCalled();
 });

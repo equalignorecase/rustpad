@@ -2,6 +2,7 @@ use crate::{
     errors::{AppError, Result},
     models::{Config, Document, SessionTab},
     services::{
+        backups::{self, BackupEntry},
         config,
         files::{Files, destination, existing_fingerprint},
         updater,
@@ -77,6 +78,12 @@ impl Backend {
             allow_exit: AtomicBool::new(false),
             folder: Mutex::new(None),
         }
+    }
+    pub fn backups_dir(&self) -> PathBuf {
+        self.config_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("backups")
     }
     fn remember(&self, doc: &Document) -> Result<()> {
         if let Some(path) = &doc.path {
@@ -198,6 +205,7 @@ pub async fn save_document(
         &expected,
     )?;
     backend.remember(&doc)?;
+    let _ = backups::remove_entry(&backend.backups_dir(), &id);
     Ok(doc)
 }
 #[tauri::command]
@@ -236,11 +244,13 @@ pub async fn save_as_document(
         expected.as_deref(),
     )?;
     backend.remember(&doc)?;
+    let _ = backups::remove_entry(&backend.backups_dir(), &id);
     Ok(Some(doc))
 }
 #[tauri::command]
 pub async fn close_document(id: String, backend: State<'_, Backend>) -> Result<()> {
     lock(&backend.files)?.close(&id);
+    let _ = backups::remove_entry(&backend.backups_dir(), &id);
     Ok(())
 }
 #[tauri::command]
@@ -297,6 +307,112 @@ pub async fn open_recent(index: usize, backend: State<'_, Backend>) -> Result<Op
         .ok_or_else(|| AppError::new("recent", "Recent file is no longer available."))?;
     open_paths(&backend, vec![PathBuf::from(path)])
 }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveredBackup {
+    backup_key: String,
+    document: Document,
+    draft_content: String,
+    draft_line_ending: String,
+    draft_bom: bool,
+    draft_encoding: String,
+    cursor: usize,
+    scroll: f64,
+    disk_changed: bool,
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn save_backup(
+    id: String,
+    name: String,
+    content: String,
+    line_ending: String,
+    bom: bool,
+    encoding: String,
+    cursor: usize,
+    scroll: f64,
+    backend: State<'_, Backend>,
+) -> Result<()> {
+    let (path, fingerprint) = {
+        let files = lock(&backend.files)?;
+        match files.get(&id) {
+            Ok(doc) => (doc.path.clone(), doc.fingerprint.clone()),
+            Err(_) => (None, String::new()),
+        }
+    };
+    let entry = BackupEntry {
+        key: id,
+        name,
+        path,
+        fingerprint,
+        line_ending,
+        bom,
+        encoding,
+        cursor,
+        scroll,
+    };
+    backups::save_entry(&backend.backups_dir(), entry, &content)
+}
+
+#[tauri::command]
+pub async fn remove_backup(id: String, backend: State<'_, Backend>) -> Result<()> {
+    backups::remove_entry(&backend.backups_dir(), &id)
+}
+
+#[tauri::command]
+pub async fn clear_backups(backend: State<'_, Backend>) -> Result<()> {
+    backups::clear_all(&backend.backups_dir())
+}
+
+#[tauri::command]
+pub async fn restore_backups(backend: State<'_, Backend>) -> Result<Vec<RecoveredBackup>> {
+    let loaded = backups::load_all(&backend.backups_dir());
+    let mut files = lock(&backend.files)?;
+    let mut restored = Vec::with_capacity(loaded.len());
+    for (entry, draft_content) in loaded {
+        let (document, disk_changed) = match &entry.path {
+            Some(path_str) => match files.open(&PathBuf::from(path_str)) {
+                Ok(doc) => {
+                    let changed =
+                        !entry.fingerprint.is_empty() && doc.fingerprint != entry.fingerprint;
+                    (doc, changed)
+                }
+                Err(_) => (
+                    files.restore_untitled(
+                        entry.name.clone(),
+                        entry.line_ending.clone(),
+                        entry.bom,
+                        entry.encoding.clone(),
+                    ),
+                    false,
+                ),
+            },
+            None => (
+                files.restore_untitled(
+                    entry.name.clone(),
+                    entry.line_ending.clone(),
+                    entry.bom,
+                    entry.encoding.clone(),
+                ),
+                false,
+            ),
+        };
+        restored.push(RecoveredBackup {
+            backup_key: entry.key,
+            document,
+            draft_content,
+            draft_line_ending: entry.line_ending,
+            draft_bom: entry.bom,
+            draft_encoding: entry.encoding,
+            cursor: entry.cursor,
+            scroll: entry.scroll,
+            disk_changed,
+        });
+    }
+    Ok(restored)
+}
+
 #[tauri::command]
 pub async fn restore_session(backend: State<'_, Backend>) -> Result<OpenBatch> {
     let paths = lock(&backend.config)?

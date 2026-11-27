@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { useWorkspace, fonts } from "../../stores/workspace";
+import { documents } from "../../services/documents/controller";
 import { Modal } from "../ui/dialog";
 import { checkForUpdates, installUpdate, openReleasePage } from "../../services/updates";
 import { useI18n } from "../../services/i18n";
@@ -58,7 +59,12 @@ export function SettingsDialog({
     [
       "restoreSession",
       t.restoreSession,
-      "Reopen saved files and cursor positions; unsaved text stays in this session only",
+      "Reopen saved files and cursor positions when RustPad launches",
+    ],
+    [
+      "crashRecovery",
+      t.crashRecovery,
+      "Periodically back up unsaved tabs and edits into a separate recovery folder and close without prompting (Hot Exit).",
     ],
     [
       "autoSave",
@@ -160,7 +166,12 @@ export function SettingsDialog({
               type="checkbox"
               role="switch"
               checked={Boolean(settings[key])}
-              onChange={(e) => setSettings({ [key]: e.target.checked })}
+              onChange={(e) => {
+                setSettings({ [key]: e.target.checked });
+                if (key === "crashRecovery" && !e.target.checked) {
+                  void documents.clearBackups();
+                }
+              }}
             />
           </label>
         ))}

@@ -107,11 +107,13 @@ export class DocumentController {
   private initialized = false;
   private autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private autoSaveBlocked = new Set<string>();
+  private backupTimers = new Map<string, ReturnType<typeof setTimeout>>();
   constructor(
     private api: Native = native,
     private editor: EditorSession = sessions,
   ) {
     editor.onEdit = (id) => {
+      this.scheduleBackup(id);
       clearTimeout(this.autoSaveTimers.get(id));
       const state = useWorkspace.getState();
       if (
@@ -146,6 +148,66 @@ export class DocumentController {
         store.patch(id, { dirty: editor.isDirty(id) });
     };
   }
+  private scheduleBackup(id: string) {
+    clearTimeout(this.backupTimers.get(id));
+    this.backupTimers.delete(id);
+    if (!useWorkspace.getState().settings.crashRecovery || this.closing) return;
+    this.backupTimers.set(
+      id,
+      setTimeout(() => {
+        this.backupTimers.delete(id);
+        if (
+          useWorkspace.getState().settings.crashRecovery &&
+          useWorkspace.getState().documents[id] &&
+          !this.closing
+        )
+          void this.backupDocument(id);
+      }, 1500),
+    );
+  }
+  async backupDocument(id: string) {
+    if (!this.api.saveBackup || !useWorkspace.getState().documents[id]) return;
+    let session;
+    try {
+      session = this.editor.get(id);
+    } catch {
+      return;
+    }
+    if (!this.editor.isDirty(id)) {
+      await this.api.removeBackup?.(id).catch(() => {});
+      return;
+    }
+    const snapshot = this.editor.snapshot(id);
+    const lineEnding =
+      snapshot.ending === "Preserve"
+        ? session.info.lineEnding
+        : snapshot.ending;
+    await this.api
+      .saveBackup(
+        id,
+        session.info.name,
+        snapshot.content,
+        lineEnding,
+        snapshot.bom,
+        snapshot.encoding,
+        session.state.selection.main.head,
+        session.scroll,
+      )
+      .catch(() => {});
+  }
+  async flushBackups() {
+    for (const timer of this.backupTimers.values()) clearTimeout(timer);
+    this.backupTimers.clear();
+    if (!useWorkspace.getState().settings.crashRecovery) return;
+    for (const id of [...useWorkspace.getState().order]) {
+      await this.backupDocument(id);
+    }
+  }
+  async clearBackups() {
+    for (const timer of this.backupTimers.values()) clearTimeout(timer);
+    this.backupTimers.clear();
+    await this.api.clearBackups?.().catch(() => {});
+  }
   add(doc: DocumentInfo) {
     this.editor.add(doc);
     useWorkspace.getState().add(doc);
@@ -165,6 +227,8 @@ export class DocumentController {
     }
     clearTimeout(this.autoSaveTimers.get(soleId));
     this.autoSaveTimers.delete(soleId);
+    clearTimeout(this.backupTimers.get(soleId));
+    this.backupTimers.delete(soleId);
     this.editor.remove(soleId);
     useWorkspace.getState().remove(soleId);
     void this.api.close?.(soleId)?.catch(() => {});
@@ -258,6 +322,33 @@ export class DocumentController {
           (doc) => doc.path === config.active,
         );
         if (selected) useWorkspace.getState().activate(selected.id);
+      }
+      if (settings.crashRecovery && this.api.restoreBackups) {
+        const recovered = await this.api.restoreBackups();
+        for (const item of recovered) {
+          if (!useWorkspace.getState().documents[item.document.id]) {
+            this.add(item.document);
+          }
+          this.editor.applyDraft(
+            item.document.id,
+            item.draftContent,
+            item.cursor,
+            item.scroll,
+            item.draftBom,
+            item.draftEncoding,
+          );
+          useWorkspace.getState().patch(item.document.id, {
+            dirty: true,
+            external: item.diskChanged,
+            lineEnding: item.draftLineEnding,
+            bom: item.draftBom,
+            encoding: item.draftEncoding,
+          });
+          if (item.backupKey !== item.document.id) {
+            await this.api.removeBackup?.(item.backupKey).catch(() => {});
+          }
+          await this.backupDocument(item.document.id);
+        }
       }
       await this.pending();
       if (!useWorkspace.getState().order.length) await this.newDocument();
@@ -373,6 +464,11 @@ export class DocumentController {
       });
       this.pollSuppressed.delete(id);
       this.autoSaveBlocked.delete(id);
+      clearTimeout(this.backupTimers.get(id));
+      this.backupTimers.delete(id);
+      if (!this.editor.isDirty(id)) {
+        await this.api.removeBackup?.(id).catch(() => {});
+      }
       await this.refreshRecent();
       useFeedback.getState().notify(`${doc.name} saved`);
       return true;
@@ -418,6 +514,8 @@ export class DocumentController {
       if (!(await this.confirmClose(id))) return;
       clearTimeout(this.autoSaveTimers.get(id));
       this.autoSaveTimers.delete(id);
+      clearTimeout(this.backupTimers.get(id));
+      this.backupTimers.delete(id);
       await this.api.close(id);
       this.editor.remove(id);
       useWorkspace.getState().remove(id);
@@ -431,8 +529,15 @@ export class DocumentController {
     this.closing = true;
     useWorkspace.setState({ closing: true });
     try {
-      for (const id of [...useWorkspace.getState().order])
-        if (!(await this.confirmClose(id))) return;
+      const hotExit = useWorkspace.getState().settings.crashRecovery;
+      if (hotExit) {
+        for (const timer of this.autoSaveTimers.values()) clearTimeout(timer);
+        this.autoSaveTimers.clear();
+        await this.flushBackups();
+      } else {
+        for (const id of [...useWorkspace.getState().order])
+          if (!(await this.confirmClose(id))) return;
+      }
       try {
         await this.persist();
       } catch (error) {
@@ -487,6 +592,7 @@ export class DocumentController {
       bom: session.bom,
       encoding: session.encoding,
     });
+    this.scheduleBackup(id);
   }
   async reload(id: string) {
     const info = await this.api.read(id);

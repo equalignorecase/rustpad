@@ -1,3 +1,4 @@
+pub mod backups;
 pub mod config;
 pub mod files;
 pub mod updater;

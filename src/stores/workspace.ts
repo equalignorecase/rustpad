@@ -16,6 +16,7 @@ export function settingsForPlatform(mac: boolean): Settings {
     bracketMatching: true,
     showRecent: true,
     restoreSession: true,
+    crashRecovery: true,
     autoSave: false,
     preferredEnding: mac ? "LF" : "CRLF",
   };

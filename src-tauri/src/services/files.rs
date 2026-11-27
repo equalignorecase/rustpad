@@ -373,6 +373,32 @@ impl Files {
         doc
     }
 
+    pub fn restore_untitled(
+        &mut self,
+        name: String,
+        line_ending: String,
+        bom: bool,
+        encoding: String,
+    ) -> Document {
+        self.next_id += 1;
+        let doc = Document {
+            id: format!("document-{}", self.next_id),
+            name: if name.trim().is_empty() {
+                format!("Untitled {}", self.next_id)
+            } else {
+                name
+            },
+            path: None,
+            content: String::new(),
+            fingerprint: String::new(),
+            line_ending,
+            bom,
+            encoding,
+        };
+        self.records.insert(doc.id.clone(), doc.clone());
+        doc
+    }
+
     pub fn open(&mut self, path: &Path) -> Result<Document> {
         let path = fs::canonicalize(path)?;
         let bytes = read_bytes(&path)?;
